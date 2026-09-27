@@ -19,7 +19,7 @@ function journalPwa(): Plugin {
       const dist = 'dist'
       const assets = walk(dist)
         .map((file) => `./${relative(dist, file).split('\\').join('/')}`)
-        .filter((file) => file !== './sw.js')
+        .filter((file) => file !== './sw.js' && !file.includes('/demo/'))
       const worker = `const CACHE = 'my-bullet-journal-${Date.now()}'
 const ASSETS = ${JSON.stringify(['./', ...assets])}
 self.addEventListener('install', (event) => {

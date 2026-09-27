@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { withDemoPrefix } from '../lib/demo-route.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
 import { CollectionGlyph } from '../components/marks.tsx'
@@ -7,7 +8,9 @@ import { EmptyNote } from '../components/ui.tsx'
 
 export function CollectionsPage() {
   const { snapshot } = useJournal()
+  const location = useLocation()
   const navigate = useNavigate()
+  const href = (to: string) => withDemoPrefix(location.pathname, to)
   const [title, setTitle] = useState('')
   const open = snapshot.collections.filter((collection) => !collection.archived)
   const archived = snapshot.collections.filter((collection) => collection.archived)
@@ -28,7 +31,7 @@ export function CollectionsPage() {
             <li key={collection.id}>
               <CollectionGlyph name={collection.icon} />
               <div>
-                <Link to={`/collections/${collection.id}`}>{collection.title}</Link>
+                <Link to={href(`/collections/${collection.id}`)}>{collection.title}</Link>
                 {collection.description && <p className="whisper">{collection.description}</p>}
               </div>
             </li>
@@ -40,7 +43,7 @@ export function CollectionsPage() {
             event.preventDefault()
             const id = journal.addCollection(title)
             setTitle('')
-            if (id) navigate(`/collections/${id}`)
+            if (id) navigate(href(`/collections/${id}`))
           }}
         >
           <input className="ink-input" aria-label="New collection title" placeholder="New collection" value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -52,7 +55,7 @@ export function CollectionsPage() {
             <ul className="index-list">
               {archived.map((collection) => (
                 <li key={collection.id}>
-                  <Link to={`/collections/${collection.id}`}>{collection.title}</Link>
+                  <Link to={href(`/collections/${collection.id}`)}>{collection.title}</Link>
                 </li>
               ))}
             </ul>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { bareJournalPath, withDemoPrefix } from '../lib/demo-route.ts'
 import { shouldApplyTypeShortcut } from '../lib/keyboard.ts'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { monthOf, quarterOf, todayISO } from '../domain/dates.ts'
@@ -87,6 +88,35 @@ export function JournalRoot({ children }: { children: ReactNode }) {
   )
 }
 
+export function DemoRoot() {
+  const { ready, error, snapshot } = useJournal()
+  useEffect(() => {
+    void journal.openDemo()
+    return () => {
+      void journal.closeSession()
+    }
+  }, [])
+  useEffect(() => {
+    if (!ready) return
+    applyAppearance(snapshot.settings)
+  }, [ready, snapshot.settings])
+  if (error && !ready) {
+    return (
+      <div className="boot">
+        <p>{error}</p>
+      </div>
+    )
+  }
+  if (!ready) {
+    return (
+      <div className="boot">
+        <p>Opening your journal…</p>
+      </div>
+    )
+  }
+  return <Outlet />
+}
+
 export function AppShell() {
   const [open, setOpen] = useState(false)
   const location = useLocation()
@@ -94,6 +124,7 @@ export function AppShell() {
   const { error } = useJournal()
   const auth = useAuth()
   const sheetRef = useRef<HTMLDivElement>(null)
+  const demo = location.pathname === '/demo' || location.pathname.startsWith('/demo/')
 
   useEffect(() => {
     setOpen(false)
@@ -130,11 +161,11 @@ export function AppShell() {
             <p>Day = action + reality</p>
           </div>
           <div className="utility-links">
-            <NavLink to="/search">Search</NavLink>
-            <NavLink to="/settings">Settings</NavLink>
-            <SyncChip />
-            {auth.user?.email && <p className="signed-in">{auth.user.email}</p>}
-            <SignOutButton />
+            <NavLink to={withDemoPrefix(location.pathname, '/search')}>Search</NavLink>
+            <NavLink to={withDemoPrefix(location.pathname, '/settings')}>Settings</NavLink>
+            {!demo && <SyncChip />}
+            {!demo && auth.user?.email && <p className="signed-in">{auth.user.email}</p>}
+            {!demo && <SignOutButton />}
           </div>
         </nav>
         <div className="sheet" ref={sheetRef}>
@@ -143,8 +174,8 @@ export function AppShell() {
               Index
             </button>
             <div className="mobile-bar-end">
-              <SignOutButton />
-              <SyncChip />
+              {!demo && <SignOutButton />}
+              {!demo && <SyncChip />}
             </div>
           </div>
           {error && <p className="save-error">{error}</p>}
@@ -160,10 +191,10 @@ export function AppShell() {
             <p className="drawer-title">Index</p>
             <BookmarkList />
             <div className="utility-links">
-              <NavLink to="/search">Search</NavLink>
-              <NavLink to="/settings">Settings</NavLink>
-              {auth.user?.email && <p className="signed-in">{auth.user.email}</p>}
-              <SignOutButton />
+              <NavLink to={withDemoPrefix(location.pathname, '/search')}>Search</NavLink>
+              <NavLink to={withDemoPrefix(location.pathname, '/settings')}>Settings</NavLink>
+              {!demo && auth.user?.email && <p className="signed-in">{auth.user.email}</p>}
+              {!demo && <SignOutButton />}
             </div>
             <p className="whisper drawer-principle">Capture everything. Commit to very little.</p>
           </nav>
@@ -178,11 +209,12 @@ function BookmarkList() {
   const { year, month } = monthOf(today)
   const quarter = quarterOf(year, month)
   const location = useLocation()
+  const path = bareJournalPath(location.pathname)
   return (
     <ul>
       {TABS.map((tab) => {
-        const to = tab.to === 'month' ? `/month/${year}/${month}` : tab.id === 'goals' ? `/goals/${quarter.year}/${quarter.quarter}` : tab.to
-        const path = location.pathname
+        const target = tab.to === 'month' ? `/month/${year}/${month}` : tab.id === 'goals' ? `/goals/${quarter.year}/${quarter.quarter}` : tab.to
+        const to = withDemoPrefix(location.pathname, target)
         const active =
           tab.id === 'today'
             ? path === '/' || path.startsWith('/day/')
@@ -194,7 +226,7 @@ function BookmarkList() {
                   ? path.startsWith('/collections')
                   : tab.id === 'reflections'
                     ? path.startsWith('/reflection') || path.startsWith('/review')
-                    : path === to
+                    : path === target
         return (
           <li key={tab.id}>
             <NavLink to={to} end={tab.id === 'today'} className={() => cls('bookmark', active && 'active')} data-tab={tab.id}>
