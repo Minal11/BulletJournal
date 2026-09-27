@@ -17,6 +17,9 @@
   --hand-size: 1.22rem;
   --ui-size: 0.98rem;
   --line: 2.05rem;
+  --time-col: 6.75rem;
+  --margin-gap: 0.95rem;
+  --bullet-col: 1.55rem;
   --font-hand: "Patrick Hand", "Segoe Print", cursive;
   --font-ui: "Source Sans 3", "Avenir Next", sans-serif;
   --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.55'/></svg>");
@@ -192,12 +195,12 @@ html[data-theme="dark"] .sheet::before {
   background: linear-gradient(90deg, rgba(0, 0, 0, 0.45), transparent 85%);
 }
 .mobile-bar, .save-error { display: none; }
-.page { position: relative; padding: 1.7rem 1.5rem 2.4rem 1rem; }
-.page-body { margin-left: 3.15rem; position: relative; }
+.page { position: relative; padding: 1.7rem 1.5rem 2.4rem 0.85rem; }
+.page-body { margin-left: calc(var(--time-col) + var(--margin-gap)); position: relative; }
 .page-body::before {
   content: "";
   position: absolute;
-  left: -0.8rem;
+  left: calc(var(--margin-gap) * -0.62);
   top: 0;
   bottom: 0;
   width: 1px;
@@ -209,7 +212,7 @@ html[data-theme="dark"] .sheet::before {
   grid-template-columns: auto 1fr auto;
   gap: 0.8rem;
   align-items: end;
-  margin: 0 0 1.2rem 3.15rem;
+  margin: 0 0 1.2rem calc(var(--time-col) + var(--margin-gap));
 }
 .day-head h1, .goal-title, .preview-title {
   font-family: var(--font-hand);
@@ -250,18 +253,27 @@ h3 { font-size: 1.15rem; color: var(--ink-soft); }
 }
 .section-row h2, .goal-head h2 { margin: 0; }
 
-.entry, .composer {
+.entry, .log-composer {
   display: grid;
-  grid-template-columns: 2.7rem 1.55rem minmax(0, 1fr);
-  gap: 0.15rem 0.35rem;
+  grid-template-columns: var(--time-col) var(--margin-gap) var(--bullet-col) minmax(0, 1fr);
+  gap: 0.15rem 0.2rem;
   align-items: start;
-  margin-left: -2.7rem;
+  margin-left: calc(-1 * (var(--time-col) + var(--margin-gap)));
 }
+.entry-time {
+  grid-column: 1;
+  min-width: 0;
+  padding-right: 0.2rem;
+}
+.journal-margin { grid-column: 2; }
+.entry > .symbol-btn, .log-composer > .symbol-btn { grid-column: 3; }
+.entry-body, .log-composer .composer-input { grid-column: 4; }
 .entry-time, .time-btn, .time-edit {
   font-family: var(--font-hand);
   font-size: 1.05rem;
   color: var(--ink-soft);
   text-align: right;
+  white-space: nowrap;
 }
 .time-btn, .symbol-btn, .more-btn, .quiet-btn, .cal-add, .icon-pick, .drag-handle {
   background: none;
@@ -270,6 +282,7 @@ h3 { font-size: 1.15rem; color: var(--ink-soft); }
 }
 .time-edit {
   width: 100%;
+  max-width: 100%;
   background: transparent;
   border: 0;
   border-bottom: 1px solid transparent;
@@ -288,7 +301,7 @@ h3 { font-size: 1.15rem; color: var(--ink-soft); }
 .glyph { width: 1.3rem; height: 1.3rem; }
 .entry-body { min-width: 0; }
 .entry-line { display: flex; gap: 0.45rem; align-items: flex-start; }
-.entry-line .entry-edit { flex: 1; min-width: 0; width: auto; }
+.entry-line .entry-edit { flex: 1 1 auto; min-width: 0; width: 100%; }
 .entry-line .quiet-btn { flex: none; margin-top: 0.15rem; }
 .entry-edit, .ink-input, .ink-area, .composer-input, .search-line, .goal-title {
   width: 100%;
@@ -331,8 +344,36 @@ h3 { font-size: 1.15rem; color: var(--ink-soft); }
   padding: 0.7rem 0 0.2rem;
   margin-top: 0.4rem;
 }
-.composer.compact { position: static; background: none; margin-top: 0.4rem; }
-.composer-hint { grid-column: 2 / -1; margin: 0.15rem 0 0; font-size: 0.95rem; }
+.composer.compact {
+  position: static;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  background: none;
+  margin-top: 0.4rem;
+  margin-left: 0;
+}
+.composer.compact .composer-input { flex: 1 1 auto; min-width: 0; width: 100%; }
+.composer-hint, .composer-error { grid-column: 4; margin: 0.15rem 0 0; font-size: 0.95rem; }
+.composer-error { color: var(--accent); }
+.log-composer .composer-input {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  resize: none;
+  field-sizing: content;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .plan-list, .future-list, .focus-list, .plain-list, .index-list, .memory-list, .migration-list, .snippets, .month-list {
   list-style: none;
   margin: 0;
@@ -340,11 +381,13 @@ h3 { font-size: 1.15rem; color: var(--ink-soft); }
 }
 .plan-list li, .plan-add {
   display: grid;
-  grid-template-columns: 3.4rem minmax(0, 1fr) auto;
-  gap: 0.2rem 0.55rem;
-  margin-left: -3.4rem;
+  grid-template-columns: var(--time-col) var(--margin-gap) minmax(0, 1fr) auto;
+  gap: 0.2rem 0.35rem;
+  margin-left: calc(-1 * (var(--time-col) + var(--margin-gap)));
   align-items: center;
 }
+.plan-list li .ink-input, .plan-add .ink-input { grid-column: 3; width: 100%; min-width: 0; }
+.plan-list li .quiet-btn { grid-column: 4; }
 .future-list li {
   display: flex;
   flex-wrap: wrap;
@@ -389,7 +432,9 @@ h3 { font-size: 1.15rem; color: var(--ink-soft); }
   text-decoration: none;
   border-bottom: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
 }
-.month-list { margin-left: -2.7rem; }
+.month-list { margin-left: 0; }
+.cal-marks form { flex: 1 1 12rem; min-width: 0; }
+.cal-marks .ink-input { width: 100%; min-width: 0; }
 .cal-row {
   display: grid;
   grid-template-columns: 4.4rem minmax(0, 1fr);
@@ -549,12 +594,13 @@ html[data-theme="dark"] .paper-dialog::backdrop { background: rgba(0, 0, 0, 0.55
     text-decoration: underline;
     text-underline-offset: 3px;
   }
-  .page { padding: 0.6rem 0.85rem 5.5rem 0.55rem; }
+  .page { padding: 0.6rem 0.7rem 5.5rem 0.4rem; --time-col: 5.7rem; --margin-gap: 0.7rem; --bullet-col: 2.5rem; }
   .symbol-btn { width: 2.5rem; height: 2.5rem; }
-  .time-btn { min-height: 2.5rem; min-width: 2.5rem; }
-  .page-body, .day-head { margin-left: 0.4rem; }
-  .page-body::before { left: -0.35rem; }
-  .entry, .plan-list li, .future-list li, .composer, .plan-add, .month-list { margin-left: 0; }
+  .time-btn { min-height: 2.5rem; }
+  .page-body, .day-head { margin-left: calc(var(--time-col) + var(--margin-gap)); }
+  .page-body::before { left: calc(var(--margin-gap) * -0.62); }
+  .entry, .log-composer, .plan-list li, .plan-add { margin-left: calc(-1 * (var(--time-col) + var(--margin-gap))); }
+  .future-list li, .composer.compact, .month-list { margin-left: 0; }
   .day-head { grid-template-columns: auto 1fr auto; }
   .day-head h1 { font-size: 1.8rem; }
   .drawer-backdrop {
@@ -624,13 +670,7 @@ html[data-theme="dark"] .paper-dialog::backdrop { background: rgba(0, 0, 0, 0.55
 .auth-waiting { min-height: 100dvh; place-items: center; }
 
 @media (max-width: 420px) {
-  .entry, .composer {
-    grid-template-columns: 2.3rem 1.35rem minmax(0, 1fr);
-  }
-  .plan-list li, .plan-add {
-    grid-template-columns: 2.8rem minmax(0, 1fr) auto;
-    margin-left: 0;
-  }
+  .page { --time-col: 5.35rem; --margin-gap: 0.55rem; }
   .cal-row { grid-template-columns: 3.6rem minmax(0, 1fr); }
 }
 
