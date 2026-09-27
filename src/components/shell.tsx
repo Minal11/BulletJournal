@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { shouldApplyTypeShortcut } from '../lib/keyboard.ts'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { monthOf, quarterOf, todayISO } from '../domain/dates.ts'
 import { journalSummary } from '../services/sync-diff.ts'
@@ -96,6 +97,7 @@ export function AppShell() {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      if (shouldApplyTypeShortcut(event, event.target)) return
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault()
         if (location.pathname !== '/' && !location.pathname.startsWith('/day/')) {

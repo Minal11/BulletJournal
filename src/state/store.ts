@@ -48,6 +48,7 @@ let state: StoreState = {
 }
 let saveChain: Promise<void> = Promise.resolve()
 let pending: JournalSnapshot | null = null
+let savedSnapshot: JournalSnapshot = state.snapshot
 let trackChanges = false
 let sessionToken = 0
 
@@ -68,13 +69,15 @@ function commit(snapshot: JournalSnapshot, track = trackChanges) {
         const saving = pending
         pending = null
         await saveJournal(saving)
+        savedSnapshot = saving
       }
+      if (track) void syncService.noteChange(previous)
     })
     .catch(() => {
-      state = { ...state, error: 'This browser could not save the journal.' }
+      pending = null
+      state = { ...state, snapshot: savedSnapshot, error: 'This browser could not save the journal.' }
       emit()
     })
-  if (track) void syncService.noteChange(previous)
 }
 
 function snap(): JournalSnapshot {
@@ -179,7 +182,7 @@ export const journal = {
     await journal.flush()
   },
   async flush() {
-    if (pending) await saveChain
+    await saveChain
   },
   updateSettings(patch: Partial<AppSettings>) {
     const current = snap()
@@ -195,9 +198,9 @@ export const journal = {
     signifiers?: Signifier[]
     goalIds?: string[]
     collectionIds?: string[]
-  }) {
+  }): JournalEntry | null {
     const parsed = parseRapidLog(input.content, input.type ?? 'task')
-    if (!parsed.content) return
+    if (!parsed.content) return null
     const current = snap()
     const entry = makeEntry({
       date: input.date,
@@ -213,6 +216,7 @@ export const journal = {
       sortOrder: current.entries.length,
     })
     commit({ ...current, entries: [...current.entries, entry] })
+    return entry
   },
   updateEntry(id: string, patch: Partial<Pick<JournalEntry, 'content' | 'note' | 'timestamp' | 'showTimestamp' | 'date'>>) {
     const current = snap()

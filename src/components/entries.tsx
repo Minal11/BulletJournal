@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { bulletLabel, markForEntry, signifierMarks, TASK_STATUS_LABEL, TYPE_LABEL } from '../domain/bullets.ts'
-import { currentTime, formatComposerTime, formatDisplayTime, normalizeTime, upcomingMonths } from '../domain/dates.ts'
+import { currentTime, formatComposerTime, normalizeTime, upcomingMonths } from '../domain/dates.ts'
 import { entryCaptions } from '../domain/migration.ts'
 import type { BulletType, JournalEntry, PlanItem, Signifier, TaskStatus } from '../domain/types.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
+import { composerKeyAction } from '../lib/keyboard.ts'
 import { InkMark } from './marks.tsx'
 import { cls } from './ui.tsx'
 
@@ -15,6 +16,7 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
   const [note, setNote] = useState(entry.note)
   const contentRef = useRef<HTMLTextAreaElement>(null)
   const [editingTime, setEditingTime] = useState(false)
+  const cancelEdit = useRef(false)
   const longPress = useRef(false)
   const timer = useRef(0)
 
@@ -63,7 +65,7 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
             />
           ) : (
             <button type="button" className="time-btn" onClick={() => setEditingTime(true)}>
-              <time dateTime={entry.timestamp}>{formatDisplayTime(entry.timestamp)}</time>
+              <time dateTime={entry.timestamp}>{formatComposerTime(entry.timestamp)}</time>
             </button>
           )
         ) : (
@@ -72,6 +74,7 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
           </button>
         )}
       </div>
+      <span className="journal-margin" aria-hidden="true" />
       <button
         type="button"
         className="symbol-btn"
@@ -114,12 +117,32 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
               event.target.style.height = `${event.target.scrollHeight}px`
             }}
             onBlur={() => {
+              if (cancelEdit.current) {
+                cancelEdit.current = false
+                setDraft(entry.content)
+                return
+              }
               if (draft.trim() && draft !== entry.content) journal.updateEntry(entry.id, { content: draft.trim() })
               if (!draft.trim()) setDraft(entry.content)
             }}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
+              const action = composerKeyAction({
+                key: event.key,
+                shiftKey: event.shiftKey,
+                metaKey: event.metaKey,
+                ctrlKey: event.ctrlKey,
+                altKey: event.altKey,
+                target: event.target,
+              })
+              if (action === 'save') {
                 event.preventDefault()
+                event.currentTarget.blur()
+              }
+              if (action === 'cancel') {
+                event.preventDefault()
+                event.stopPropagation()
+                cancelEdit.current = true
+                setDraft(entry.content)
                 event.currentTarget.blur()
               }
             }}
@@ -260,10 +283,13 @@ export function Composer({
   placeholder?: string
 }) {
   const { snapshot } = useJournal()
-  const [type, setType] = useState<BulletType>(scope === 'month' ? 'task' : 'task')
+  const [type, setType] = useState<BulletType>('task')
+  const [signifiers, setSignifiers] = useState<Signifier[]>([])
   const [text, setText] = useState('')
   const [time, setTime] = useState(snapshot.settings.showTimestampsByDefault ? formatComposerTime(currentTime()) : '')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const saving = useRef(false)
 
   useEffect(() => {
     function focus() {
@@ -274,85 +300,153 @@ export function Composer({
     return () => document.removeEventListener('bj-compose', focus)
   }, [])
 
-  function submit() {
-    if (!text.trim()) return
+  useEffect(() => {
+    const node = inputRef.current
+    if (!node || CSS.supports('field-sizing', 'content')) return
+    node.style.height = 'auto'
+    node.style.height = `${node.scrollHeight}px`
+  }, [text])
+
+  async function submit() {
+    const draft = text
+    if (!draft.trim() || saving.current) return
+    saving.current = true
+    setSaveError(null)
     const timestamp = scope === 'day' ? normalizeTime(time) : null
-    journal.addEntry({
+    const entry = journal.addEntry({
       date,
-      content: text,
+      content: draft,
       type,
       scope,
       timestamp,
       showTimestamp: Boolean(timestamp) && snapshot.settings.showTimestampsByDefault,
+      signifiers,
     })
+    if (!entry) {
+      saving.current = false
+      setSaveError('This line could not be kept.')
+      return
+    }
+    await journal.flush()
+    saving.current = false
+    if (journal.getSnapshot().error) {
+      setSaveError(journal.getSnapshot().error)
+      return
+    }
     setText('')
+    setSignifiers([])
     if (snapshot.settings.showTimestampsByDefault && scope === 'day') setTime(formatComposerTime(currentTime()))
     inputRef.current?.focus()
   }
 
+  function applySlash(value: string) {
+    const parsed = value.match(/^\/(task|event|note|memory)\s+/i)
+    if (!parsed) {
+      setText(value)
+      return
+    }
+    const word = parsed[1]?.toLowerCase()
+    if (word === 'memory') {
+      setType('event')
+      setSignifiers(['important'])
+    } else if (word === 'note') {
+      setType('note')
+      setSignifiers([])
+    } else if (word === 'event') {
+      setType('event')
+      setSignifiers([])
+    } else {
+      setType('task')
+      setSignifiers([])
+    }
+    setText(value.slice(parsed[0].length))
+  }
+
   return (
     <form
-      className="composer"
+      className="composer log-composer"
       onSubmit={(event) => {
         event.preventDefault()
-        submit()
+        void submit()
       }}
     >
-      {scope === 'day' && (
-        <input
-          className="time-edit"
-          aria-label="Time for the new entry"
-          value={time}
-          placeholder="time"
-          onChange={(event) => setTime(event.target.value)}
-        />
-      )}
+      <div className="entry-time">
+        {scope === 'day' ? (
+          <input
+            className="time-edit"
+            aria-label="Time for the new entry"
+            value={time}
+            placeholder="time"
+            onChange={(event) => setTime(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                event.currentTarget.form?.requestSubmit()
+              }
+            }}
+          />
+        ) : null}
+      </div>
+      <span className="journal-margin" aria-hidden="true" />
       <button
         type="button"
         className="symbol-btn"
         aria-label={`New ${TYPE_LABEL[type]}. Change kind.`}
-        onClick={() => setType(type === 'task' ? 'event' : type === 'event' ? 'note' : 'task')}
+        onClick={() => {
+          setSignifiers([])
+          setType(type === 'task' ? 'event' : type === 'event' ? 'note' : 'task')
+        }}
       >
-        <InkMark name={type === 'task' ? 'task' : type === 'event' ? 'event' : 'note'} />
+        <InkMark name={signifiers.includes('important') && type === 'event' ? 'star' : type === 'task' ? 'task' : type === 'event' ? 'event' : 'note'} />
       </button>
-      <input
+      <textarea
         ref={inputRef}
         className="composer-input"
+        rows={1}
         aria-label="New entry"
         placeholder={placeholder}
         value={text}
         onChange={(event) => {
-          const value = event.target.value
-          const parsed = value.match(/^\/(task|event|note|memory)\s+/i)
-          if (parsed) {
-            const word = parsed[1]?.toLowerCase()
-            setType(word === 'note' || word === 'memory' ? (word === 'memory' ? 'event' : 'note') : word === 'event' ? 'event' : 'task')
-            setText(value.slice(parsed[0].length))
-            return
-          }
-          setText(value)
+          setSaveError(null)
+          applySlash(event.target.value)
         }}
         onKeyDown={(event) => {
-          if (text.trim() === '' && !event.metaKey && !event.ctrlKey && !event.altKey) {
-            const key = event.key.toLowerCase()
-            if (key === 't' || key === 'e' || key === 'n') {
-              event.preventDefault()
-              setType(key === 't' ? 'task' : key === 'e' ? 'event' : 'note')
-            }
+          const action = composerKeyAction({
+            key: event.key,
+            shiftKey: event.shiftKey,
+            metaKey: event.metaKey,
+            ctrlKey: event.ctrlKey,
+            altKey: event.altKey,
+            target: event.target,
+          })
+          if (action === 'cancel') {
+            event.preventDefault()
+            setText('')
+            setSaveError(null)
+          }
+          if (action === 'save') {
+            event.preventDefault()
+            event.currentTarget.form?.requestSubmit()
           }
         }}
       />
-      <p className="composer-hint">T task · E event · N note · /memory · Enter keeps it</p>
+      <button type="submit" className="visually-hidden">
+        Keep this line
+      </button>
+      {saveError && <p className="composer-error">{saveError}</p>}
+      <p className="composer-hint">/task · /event · /note · /memory · Enter keeps it</p>
     </form>
   )
 }
 
 function PlanLine({ date, item }: { date: string; item: PlanItem }) {
-  const [time, setTime] = useState(item.time ? formatDisplayTime(item.time) : '')
+  const [time, setTime] = useState(item.time ? formatComposerTime(item.time) : '')
   const [content, setContent] = useState(item.content)
+  const skipTime = useRef(false)
+  const skipContent = useRef(false)
 
   useEffect(() => {
-    setTime(item.time ? formatDisplayTime(item.time) : '')
+    setTime(item.time ? formatComposerTime(item.time) : '')
   }, [item.time])
   useEffect(() => setContent(item.content), [item.content])
 
@@ -363,17 +457,58 @@ function PlanLine({ date, item }: { date: string; item: PlanItem }) {
         aria-label="Plan time"
         value={time}
         onChange={(event) => setTime(event.target.value)}
-        onBlur={() => journal.updatePlanItem(date, item.id, { time: normalizeTime(time) })}
+        onBlur={() => {
+          if (skipTime.current) {
+            skipTime.current = false
+            return
+          }
+          journal.updatePlanItem(date, item.id, { time: normalizeTime(time) })
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur()
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            skipTime.current = true
+            setTime(item.time ? formatComposerTime(item.time) : '')
+            event.currentTarget.blur()
+          }
+        }}
       />
+      <span className="journal-margin" aria-hidden="true" />
       <input
         className="ink-input"
         aria-label="Plan"
         value={content}
         onChange={(event) => setContent(event.target.value)}
         onBlur={() => {
+          if (skipContent.current) {
+            skipContent.current = false
+            setContent(item.content)
+            return
+          }
           const next = content.trim()
           if (!next) setContent(item.content)
           else journal.updatePlanItem(date, item.id, { content: next })
+        }}
+        onKeyDown={(event) => {
+          const action = composerKeyAction({
+            key: event.key,
+            shiftKey: event.shiftKey,
+            metaKey: event.metaKey,
+            ctrlKey: event.ctrlKey,
+            altKey: event.altKey,
+            target: event.target,
+          })
+          if (action === 'save') {
+            event.preventDefault()
+            event.currentTarget.blur()
+          }
+          if (action === 'cancel') {
+            event.preventDefault()
+            skipContent.current = true
+            setContent(item.content)
+            event.currentTarget.blur()
+          }
         }}
       />
       <button type="button" className="quiet-btn" aria-label="Remove plan line" onClick={() => journal.removePlanItem(date, item.id)}>
@@ -418,8 +553,49 @@ export function PlanBlock({ date }: { date: string }) {
               setContent('')
             }}
           >
-            <input className="time-edit" aria-label="New plan time" placeholder="9:00" value={time} onChange={(event) => setTime(event.target.value)} />
-            <input className="ink-input" aria-label="New plan line" placeholder="Add an intention" value={content} onChange={(event) => setContent(event.target.value)} />
+            <input
+              className="time-edit"
+              aria-label="New plan time"
+              placeholder="9:00"
+              value={time}
+              onChange={(event) => setTime(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  event.currentTarget.form?.requestSubmit()
+                }
+              }}
+            />
+            <span className="journal-margin" aria-hidden="true" />
+            <input
+              className="ink-input"
+              aria-label="New plan line"
+              placeholder="Add an intention"
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              onKeyDown={(event) => {
+                const action = composerKeyAction({
+                  key: event.key,
+                  shiftKey: event.shiftKey,
+                  metaKey: event.metaKey,
+                  ctrlKey: event.ctrlKey,
+                  altKey: event.altKey,
+                  target: event.target,
+                })
+                if (action === 'save') {
+                  event.preventDefault()
+                  event.currentTarget.form?.requestSubmit()
+                }
+                if (action === 'cancel') {
+                  event.preventDefault()
+                  setContent('')
+                  setTime('')
+                }
+              }}
+            />
+            <button type="submit" className="visually-hidden">
+              Add intention
+            </button>
           </form>
         </>
       )}
