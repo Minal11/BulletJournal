@@ -1,17 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
-import { bulletLabel, markForEntry, signifierMarks, TASK_STATUS_LABEL, TYPE_LABEL } from '../domain/bullets.ts'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { bulletLabel, markForEntry, TASK_STATUS_LABEL, TYPE_LABEL } from '../domain/bullets.ts'
 import { currentTime, formatComposerTime, normalizeTime, upcomingMonths } from '../domain/dates.ts'
 import { entryCaptions } from '../domain/migration.ts'
 import type { BulletType, JournalEntry, PlanItem, Signifier, TaskStatus } from '../domain/types.ts'
+import { claimEntryMenu, entryMenuOwner, menuOnScroll, placeEntryMenu, releaseEntryMenu } from '../lib/entry-menu.ts'
+import { composerKeyAction } from '../lib/keyboard.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
-import { composerKeyAction } from '../lib/keyboard.ts'
 import { InkMark } from './marks.tsx'
 import { cls } from './ui.tsx'
 
 export function EntryRow({ entry }: { entry: JournalEntry }) {
   const { snapshot } = useJournal()
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [draft, setDraft] = useState(entry.content)
   const [note, setNote] = useState(entry.note)
   const contentRef = useRef<HTMLTextAreaElement>(null)
@@ -40,9 +42,24 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
   const goals = snapshot.goals.filter((goal) => entry.goalIds.includes(goal.id))
   const mark = markForEntry(entry)
 
-  function openMenu(x: number, y: number) {
-    setMenu({ x: Math.min(x, window.innerWidth - 240), y: Math.min(y, window.innerHeight - 280) })
+  function openMenu(target: HTMLElement) {
+    claimEntryMenu(entry.id)
+    document.dispatchEvent(new CustomEvent('bj-entry-menu', { detail: entry.id }))
+    setMenuAnchor(target)
   }
+
+  function closeMenu() {
+    releaseEntryMenu(entry.id)
+    setMenuAnchor(null)
+  }
+
+  useEffect(() => {
+    function onClaim(event: Event) {
+      if ((event as CustomEvent<string>).detail !== entry.id) setMenuAnchor(null)
+    }
+    document.addEventListener('bj-entry-menu', onClaim)
+    return () => document.removeEventListener('bj-entry-menu', onClaim)
+  }, [entry.id])
 
   return (
     <article className={cls('entry', entry.taskStatus === 'cancelled' && 'is-dropped')}>
@@ -82,13 +99,14 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
         aria-haspopup="menu"
         onContextMenu={(event) => {
           event.preventDefault()
-          openMenu(event.clientX, event.clientY)
+          openMenu(event.currentTarget)
         }}
-        onPointerDown={() => {
+        onPointerDown={(event) => {
+          const target = event.currentTarget
           longPress.current = false
           timer.current = window.setTimeout(() => {
             longPress.current = true
-            openMenu(window.innerWidth / 2, window.innerHeight / 3)
+            openMenu(target)
           }, 520)
         }}
         onPointerUp={() => window.clearTimeout(timer.current)}
@@ -147,12 +165,12 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
               }
             }}
           />
-          {signifierMarks(entry.signifiers.filter((item) => mark !== 'star' || item !== 'important')) && (
-            <span className="signifiers">{signifierMarks(entry.signifiers)}</span>
-          )}
-          <button type="button" className="more-btn" aria-label="Entry actions" onClick={(event) => openMenu(event.clientX, event.clientY)}>
-            ···
-          </button>
+          <div className="entry-tools">
+            <EntrySignifiers entry={entry} mark={mark} />
+            <button type="button" className="more-btn" aria-label="Entry actions" aria-haspopup="menu" onClick={(event) => openMenu(event.currentTarget)}>
+              ···
+            </button>
+          </div>
         </div>
         {(note || entry.note) && (
           <textarea
@@ -187,40 +205,104 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
           </p>
         )}
       </div>
-      {menu && <EntryMenu entry={entry} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
+      {menuAnchor && entryMenuOwner() === entry.id && <EntryMenu entry={entry} anchor={menuAnchor} onClose={closeMenu} />}
     </article>
   )
 }
 
-function EntryMenu({ entry, x, y, onClose }: { entry: JournalEntry; x: number; y: number; onClose: () => void }) {
+function EntrySignifiers({ entry, mark }: { entry: JournalEntry; mark: ReturnType<typeof markForEntry> }) {
+  const marks = entry.signifiers.filter((item) => mark !== 'star' || item !== 'important')
+  if (marks.length === 0) return null
+  return (
+    <span className="entry-signifiers">
+      {marks.map((item) => (
+        <span key={item} className="signifier">
+          {item === 'important' ? '★' : item === 'insight' ? '!' : '?'}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function EntryMenu({ entry, anchor, onClose }: { entry: JournalEntry; anchor: HTMLElement; onClose: () => void }) {
   const { snapshot } = useJournal()
   const ref = useRef<HTMLDivElement>(null)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  const [box, setBox] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
   const { year, month } = { year: Number(entry.date.slice(0, 4)), month: Number(entry.date.slice(5, 7)) }
   const months = upcomingMonths(year, month, 8)
 
+  useLayoutEffect(() => {
+    const scroller = anchor.closest('.sheet')
+
+    function place() {
+      const anchorRect = anchor.getBoundingClientRect()
+      const frame = scroller?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight }
+      if (menuOnScroll(anchorRect.top, anchorRect.bottom, frame.top, frame.bottom) === 'close') {
+        closeRef.current()
+        return
+      }
+      const bar = document.querySelector('.mobile-bar')
+      const barBox = bar?.getBoundingClientRect()
+      const topInset = bar && getComputedStyle(bar).display !== 'none' && barBox ? Math.max(0, barBox.bottom) : 0
+      const safeBottom = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom')) || 0
+      const viewport = window.visualViewport
+      setBox(
+        placeEntryMenu(anchorRect, ref.current?.scrollHeight ?? 280, {
+          width: viewport?.width ?? window.innerWidth,
+          height: viewport?.height ?? window.innerHeight,
+          safeBottom,
+          topInset,
+        }),
+      )
+    }
+
+    place()
+    const follow = () => place()
+    scroller?.addEventListener('scroll', follow, { passive: true })
+    window.addEventListener('resize', follow)
+    window.visualViewport?.addEventListener('resize', follow)
+    window.visualViewport?.addEventListener('scroll', follow)
+    return () => {
+      scroller?.removeEventListener('scroll', follow)
+      window.removeEventListener('resize', follow)
+      window.visualViewport?.removeEventListener('resize', follow)
+      window.visualViewport?.removeEventListener('scroll', follow)
+    }
+  }, [anchor, entry.type, entry.taskStatus, entry.signifiers, snapshot.collections.length, snapshot.goals.length])
+
   useEffect(() => {
-    function onPointer(event: MouseEvent) {
-      if (!ref.current?.contains(event.target as Node)) onClose()
+    function onPointer(event: PointerEvent) {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (ref.current?.contains(target) || anchor.contains(target)) return
+      closeRef.current()
     }
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') closeRef.current()
     }
-    window.addEventListener('mousedown', onPointer)
+    window.addEventListener('pointerdown', onPointer)
     window.addEventListener('keydown', onKey)
     ref.current?.querySelector('button')?.focus()
     return () => {
-      window.removeEventListener('mousedown', onPointer)
+      window.removeEventListener('pointerdown', onPointer)
       window.removeEventListener('keydown', onKey)
     }
-  }, [onClose])
+  }, [anchor])
 
   function chooseStatus(status: TaskStatus, target?: { year: number; month: number }) {
     journal.setEntryStatus(entry.id, status, target)
     onClose()
   }
 
-  return (
-    <div ref={ref} className="entry-menu" role="menu" style={{ left: x, top: y }}>
+  return createPortal(
+    <div
+      ref={ref}
+      className="entry-menu"
+      role="menu"
+      style={box ? { top: box.top, left: box.left, width: box.width, maxHeight: box.maxHeight } : { top: -9999, left: 0 }}
+    >
       <p>Kind</p>
       {(['task', 'event', 'note'] as BulletType[]).map((type) => (
         <button key={type} type="button" role="menuitem" className={cls(entry.type === type && 'on')} onClick={() => { journal.setEntryType(entry.id, type); onClose() }}>
@@ -269,7 +351,8 @@ function EntryMenu({ entry, x, y, onClose }: { entry: JournalEntry; x: number; y
       <button type="button" role="menuitem" className="danger" onClick={() => { journal.deleteEntry(entry.id); onClose() }}>
         Remove line
       </button>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

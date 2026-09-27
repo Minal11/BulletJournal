@@ -30,11 +30,8 @@ export function TodayPage() {
 
   return (
     <article className="page">
-      <header className="day-head">
-        <Link className="page-turn" to={`/day/${addDays(date, -1)}`}>
-          ← {weekdayShort(addDays(date, -1))}
-        </Link>
-        <div>
+      <header className="day-head today-head">
+        <div className="today-title">
           <p className="kicker">{date === today ? 'Today' : formatFriendlyDate(date, snapshot.settings.dateFormat)}</p>
           <h1>{formatDayHeading(date)}</h1>
           <p className="whisper">Day = action + reality</p>
@@ -46,9 +43,14 @@ export function TodayPage() {
             ))}
           </nav>
         </div>
-        <Link className="page-turn" to={addDays(date, 1) === today ? '/' : `/day/${addDays(date, 1)}`}>
-          {weekdayShort(addDays(date, 1))} →
-        </Link>
+        <div className="today-turns">
+          <Link className="page-turn" to={`/day/${addDays(date, -1)}`}>
+            ← {weekdayShort(addDays(date, -1))}
+          </Link>
+          <Link className="page-turn" to={addDays(date, 1) === today ? '/' : `/day/${addDays(date, 1)}`}>
+            {weekdayShort(addDays(date, 1))} →
+          </Link>
+        </div>
       </header>
       <div className="page-body">
         {waiting.length > 0 && (
