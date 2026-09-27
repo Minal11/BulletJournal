@@ -1,4 +1,5 @@
-import { HashRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { canOpenJournal, routeForGuest } from './lib/sign-out.ts'
 import { AppShell, JournalRoot } from './components/shell.tsx'
 import { AuthPage } from './pages/AuthPage.tsx'
 import { CollectionPage } from './pages/CollectionPage.tsx'
@@ -18,6 +19,7 @@ import { AuthProvider, useAuth } from './state/auth.tsx'
 
 function RequireAuth() {
   const auth = useAuth()
+  const location = useLocation()
   if (!auth.configured) return <AuthPage />
   if (auth.loading) {
     return (
@@ -26,7 +28,7 @@ function RequireAuth() {
       </div>
     )
   }
-  if (!auth.user) return <Navigate to="/sign-in" replace />
+  if (!canOpenJournal(auth.user?.id)) return <Navigate to={routeForGuest(location.pathname)} replace />
   return <Outlet />
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { shouldApplyTypeShortcut } from '../lib/keyboard.ts'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { monthOf, quarterOf, todayISO } from '../domain/dates.ts'
@@ -9,6 +9,8 @@ import { useAuth } from '../state/auth.tsx'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
 import { useSync } from '../state/use-sync.ts'
+import { PullToSync } from './pull-to-sync.tsx'
+import { SignOutButton } from './sign-out.tsx'
 import { SyncChip } from './sync-status.tsx'
 import { cls, PaperDialog } from './ui.tsx'
 
@@ -90,6 +92,8 @@ export function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const { error } = useJournal()
+  const auth = useAuth()
+  const sheetRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setOpen(false)
@@ -129,9 +133,11 @@ export function AppShell() {
             <NavLink to="/search">Search</NavLink>
             <NavLink to="/settings">Settings</NavLink>
             <SyncChip />
+            {auth.user?.email && <p className="signed-in">{auth.user.email}</p>}
+            <SignOutButton />
           </div>
         </nav>
-        <div className="sheet">
+        <div className="sheet" ref={sheetRef}>
           <div className="mobile-bar">
             <button type="button" onClick={() => setOpen(true)} aria-expanded={open} aria-controls="mobile-index">
               Index
@@ -139,6 +145,7 @@ export function AppShell() {
             <SyncChip />
           </div>
           {error && <p className="save-error">{error}</p>}
+          <PullToSync scrollerRef={sheetRef} />
           <div id="journal-page">
             <Outlet />
           </div>
@@ -152,6 +159,8 @@ export function AppShell() {
             <div className="utility-links">
               <NavLink to="/search">Search</NavLink>
               <NavLink to="/settings">Settings</NavLink>
+              {auth.user?.email && <p className="signed-in">{auth.user.email}</p>}
+              <SignOutButton />
             </div>
             <p className="whisper drawer-principle">Capture everything. Commit to very little.</p>
           </nav>

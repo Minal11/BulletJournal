@@ -1,10 +1,11 @@
 import 'fake-indexeddb/auto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { dayEntries, monthTasks } from '../domain/entries.ts'
-import { diffSnapshots, shouldAttemptSync } from '../services/sync-diff.ts'
+import { dayEntries, makeEntry, monthTasks } from '../domain/entries.ts'
+import { emptySnapshot } from '../domain/schema.ts'
+import { databaseName, diffSnapshots, shouldAttemptSync } from '../services/sync-diff.ts'
 import { journal } from '../state/store.ts'
 import { activateDatabase, deleteDatabase } from './db.ts'
-import { loadJournal } from './repository.ts'
+import { loadJournal, saveJournal } from './repository.ts'
 
 vi.mock('../lib/supabase.ts', () => ({
   isSupabaseConfigured: () => false,
@@ -70,5 +71,24 @@ describe('local journal saves', () => {
     const tasks = monthTasks(loaded?.entries ?? [], 2026, 9).map((item) => item.content)
     expect(tasks).toEqual(expect.arrayContaining(lines))
     expect(tasks.find((item) => item === LONG_TASK)?.length).toBeGreaterThan(80)
+  })
+
+  it('clears the open journal on sign out so the next account cannot read it', async () => {
+    const first = databaseName('user-a')
+    const second = databaseName('user-b')
+    databases.push(first, second)
+    await activateDatabase(first)
+    const secret = makeEntry({ date: '2026-09-26', content: 'Private line for A', type: 'note' })
+    await saveJournal({ ...emptySnapshot(), entries: [secret] })
+    journal.addEntry({ date: '2026-09-26', content: 'Private line for A', type: 'note', scope: 'day' })
+    await journal.closeSession()
+    expect(journal.getSnapshot().ready).toBe(false)
+    expect(journal.getSnapshot().snapshot.entries).toEqual([])
+
+    await activateDatabase(second)
+    expect((await loadJournal())?.entries ?? []).toEqual([])
+
+    await activateDatabase(first)
+    expect((await loadJournal())?.entries.map((entry) => entry.content)).toContain('Private line for A')
   })
 })
