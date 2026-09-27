@@ -1,3 +1,4 @@
+import { entryKindOf, parseEntryInput, storedEntry, type EntryKind } from '../lib/entry-input.ts'
 import type { BulletType, JournalEntry, Signifier, TaskStatus } from './types.ts'
 
 export const TASK_CYCLE: TaskStatus[] = ['open', 'complete', 'migrated', 'scheduled', 'cancelled']
@@ -17,7 +18,7 @@ export const TYPE_LABEL: Record<BulletType, string> = {
 }
 
 export const SIGNIFIER_LABEL: Record<Signifier, string> = {
-  important: 'Important',
+  important: 'Important / memorable',
   insight: 'Insight',
   research: 'Needs research',
 }
@@ -42,7 +43,7 @@ export function nextTaskStatus(status: TaskStatus | null): TaskStatus {
   return TASK_CYCLE[(index + 1) % TASK_CYCLE.length] ?? 'open'
 }
 
-export function markForEntry(entry: Pick<JournalEntry, 'type' | 'taskStatus' | 'signifiers'>): MarkName {
+export function markForEntry(entry: Pick<JournalEntry, 'type' | 'taskStatus' | 'signifiers' | 'tags'>): MarkName {
   if (entry.type === 'task') {
     switch (entry.taskStatus) {
       case 'complete':
@@ -57,11 +58,12 @@ export function markForEntry(entry: Pick<JournalEntry, 'type' | 'taskStatus' | '
         return 'task'
     }
   }
-  if (entry.signifiers.includes('important')) return 'star'
+  if (entry.tags?.includes('memory') || entry.signifiers.includes('important')) return 'star'
   return entry.type === 'event' ? 'event' : 'note'
 }
 
-export function bulletLabel(entry: Pick<JournalEntry, 'type' | 'taskStatus' | 'signifiers'>): string {
+export function bulletLabel(entry: Pick<JournalEntry, 'type' | 'taskStatus' | 'signifiers' | 'tags'>): string {
+  if (entryKindOf(entry) === 'memory') return 'Memory'
   if (entry.type === 'task') {
     return `Task, ${TASK_STATUS_LABEL[entry.taskStatus ?? 'open']}. Change state.`
   }
@@ -119,24 +121,12 @@ export function extractTags(content: string): string[] {
 
 export function parseRapidLog(
   raw: string,
-  fallback: BulletType,
-): { type: BulletType; content: string; signifiers: Signifier[] } {
-  let text = raw.trim()
-  let type = fallback
-  const signifiers: Signifier[] = []
-  const slash = text.match(/^\/(task|event|note|memory)\b\s*/i)
-  if (slash) {
-    const word = slash[1]?.toLowerCase()
-    if (word === 'task') type = 'task'
-    else if (word === 'event') type = 'event'
-    else if (word === 'note') type = 'note'
-    else {
-      type = 'event'
-      signifiers.push('important')
-    }
-    text = text.slice(slash[0].length).trim()
-  }
-  return { type, content: text, signifiers }
+  fallback: BulletType | EntryKind,
+): { type: BulletType; content: string; signifiers: Signifier[]; memory: boolean } {
+  const current: EntryKind = fallback === 'memory' ? 'memory' : fallback
+  const parsed = parseEntryInput(raw, current)
+  const stored = storedEntry(parsed.kind)
+  return { type: stored.type, content: parsed.content, signifiers: stored.signifiers, memory: stored.memory }
 }
 
 export function signifierMarks(signifiers: Signifier[]): string {

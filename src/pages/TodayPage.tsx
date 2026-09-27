@@ -73,7 +73,7 @@ export function TodayPage() {
                 const goal = goals.find((item) => item.id === focus.goalId) ?? snapshot.goals.find((item) => item.id === focus.goalId)
                 return (
                   <li key={focus.id}>
-                    {goal ? <Link to={`/goals/${goal.year}/${goal.quarter}`}>{goal.title}</Link> : <span>Goal</span>}
+                    {goal ? <Link to={`/goals/${goal.year}/${goal.quarter}`}>{goal.title}</Link> : <span>{focus.title || 'Focus'}</span>}
                     <span> → {focus.text}</span>
                   </li>
                 )

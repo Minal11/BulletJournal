@@ -12,6 +12,7 @@ export function makeEntry(
     showTimestamp?: boolean
     taskStatus?: TaskStatus | null
     signifiers?: Signifier[]
+    tags?: string[]
     note?: string
     collectionIds?: string[]
     goalIds?: string[]
@@ -37,7 +38,7 @@ export function makeEntry(
     note: input.note ?? '',
     taskStatus: type === 'task' ? (input.taskStatus ?? 'open') : null,
     signifiers: input.signifiers ?? [],
-    tags: extractTags(input.content),
+    tags: [...new Set([...(input.tags ?? []), ...extractTags(input.content)])],
     collectionIds: input.collectionIds ?? [],
     goalIds: input.goalIds ?? [],
     migratedFromId: input.migratedFromId ?? null,
@@ -53,7 +54,7 @@ export function withEntryContent(entry: JournalEntry, content: string, now = new
   return {
     ...entry,
     content,
-    tags: extractTags(content),
+    tags: [...new Set([...entry.tags.filter((tag) => tag === 'memory'), ...extractTags(content)])],
     updatedAt: now.toISOString(),
   }
 }

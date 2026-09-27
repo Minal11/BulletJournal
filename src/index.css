@@ -298,7 +298,31 @@ h3 { font-size: 1.15rem; color: var(--ink-soft); }
   padding-right: 0.2rem;
 }
 .journal-margin { grid-column: 2; }
-.entry > .symbol-btn, .log-composer > .symbol-btn { grid-column: 3; }
+.entry > .symbol-btn, .log-composer > .kind-picker { grid-column: 3; }
+.kind-picker { position: relative; }
+.kind-picker .symbol-btn { grid-column: auto; }
+.kind-menu {
+  position: absolute;
+  z-index: 6;
+  top: 1.7rem;
+  left: 0;
+  min-width: 7.5rem;
+  padding: 0.3rem;
+  background: var(--paper);
+  border: 1px solid color-mix(in srgb, var(--ink) 16%, transparent);
+  box-shadow: var(--page-shadow);
+  display: grid;
+}
+.kind-menu button {
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  background: none;
+  border: 0;
+  text-align: left;
+  padding: 0.15rem 0.45rem;
+  color: var(--ink);
+}
+.kind-menu button[aria-selected='true'] { text-decoration: underline; }
 .entry-body, .log-composer .composer-input { grid-column: 4; }
 .entry-time, .time-btn, .time-edit {
   font-family: var(--font-hand);

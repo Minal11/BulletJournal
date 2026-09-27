@@ -97,16 +97,19 @@ export function InkField({
   onChange,
   rows = 3,
   placeholder,
+  live = false,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   rows?: number
   placeholder?: string
+  live?: boolean
 }) {
   const [draft, setDraft] = useState(value)
+  const dirty = useRef(false)
   useEffect(() => {
-    setDraft(value)
+    if (!dirty.current) setDraft(value)
   }, [value])
   return (
     <label className="field">
@@ -116,8 +119,13 @@ export function InkField({
           className="ink-input"
           value={draft}
           placeholder={placeholder}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            dirty.current = true
+            setDraft(event.target.value)
+            if (live) onChange(event.target.value)
+          }}
           onBlur={() => {
+            dirty.current = false
             if (draft !== value) onChange(draft)
           }}
         />
@@ -127,8 +135,13 @@ export function InkField({
           rows={rows}
           value={draft}
           placeholder={placeholder}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            dirty.current = true
+            setDraft(event.target.value)
+            if (live) onChange(event.target.value)
+          }}
           onBlur={() => {
+            dirty.current = false
             if (draft !== value) onChange(draft)
           }}
         />
@@ -160,7 +173,7 @@ export function LineList({
     <div className="line-list">
       {label && <h3>{label}</h3>}
       {lines.map((line, index) => (
-        <label className="line-row" key={`${index}-${lines.length}`}>
+        <label className="line-row" key={index}>
           <span aria-hidden="true">{symbol}</span>
           <input
             className="ink-input"

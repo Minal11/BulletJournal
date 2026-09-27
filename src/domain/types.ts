@@ -90,6 +90,7 @@ export interface CalendarMark {
 export interface MonthlyGoalFocus {
   id: string
   goalId: string
+  title?: string
   text: string
 }
 

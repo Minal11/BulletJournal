@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { cyclePrimarySignifier } from '../domain/bullets.ts'
 import { collectionToMarkdown } from '../domain/markdown.ts'
 import { downloadText } from '../lib/download.ts'
-import type { CollectionBullet, CollectionIcon, TaskStatus } from '../domain/types.ts'
+import { COLLECTION_ICON_LABEL, COLLECTION_ICONS } from '../lib/collection-icons.ts'
+import type { CollectionBullet, TaskStatus } from '../domain/types.ts'
 import { todayISO } from '../domain/dates.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
@@ -11,12 +12,13 @@ import { CollectionGlyph, InkMark } from '../components/marks.tsx'
 import { SortableList, SortableRow } from '../components/sortable.tsx'
 import { EmptyNote } from '../components/ui.tsx'
 
-const ICONS: CollectionIcon[] = ['none', 'plane', 'heart', 'star', 'book', 'leaf', 'home', 'bulb', 'pencil', 'sun']
-
 function LineField({ value, label, onCommit }: { value: string; label: string; onCommit: (value: string) => void }) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const dirty = useRef(false)
   const [draft, setDraft] = useState(value)
-  useEffect(() => setDraft(value), [value])
+  useEffect(() => {
+    if (!dirty.current) setDraft(value)
+  }, [value])
   useEffect(() => {
     const node = ref.current
     if (!node || CSS.supports('field-sizing', 'content')) return
@@ -36,8 +38,14 @@ function LineField({ value, label, onCommit }: { value: string; label: string; o
       rows={1}
       aria-label={label}
       value={draft}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={() => onCommit(draft)}
+      onChange={(event) => {
+        dirty.current = true
+        setDraft(event.target.value)
+      }}
+      onBlur={() => {
+        dirty.current = false
+        onCommit(draft)
+      }}
     />
   )
 }
@@ -47,7 +55,35 @@ export function CollectionPage() {
   const params = useParams()
   const collection = snapshot.collections.find((item) => item.id === params.id)
   const [text, setText] = useState('')
+  const [draft, setDraft] = useState(collection ?? null)
+  const [boundId, setBoundId] = useState(collection?.id ?? '')
   const today = todayISO()
+  if (collection && collection.id !== boundId) {
+    setBoundId(collection.id)
+    setDraft(collection)
+  }
+  useEffect(() => {
+    if (!draft || !collection || draft.id !== collection.id) return
+    if (
+      draft.title === collection.title &&
+      draft.description === collection.description &&
+      draft.content === collection.content &&
+      draft.icon === collection.icon &&
+      draft.defaultBullet === collection.defaultBullet
+    ) {
+      return
+    }
+    const handle = window.setTimeout(() => {
+      journal.updateCollection(draft.id, {
+        title: draft.title,
+        description: draft.description,
+        content: draft.content,
+        icon: draft.icon,
+        defaultBullet: draft.defaultBullet,
+      })
+    }, 350)
+    return () => window.clearTimeout(handle)
+  }, [draft, collection])
   if (!collection) {
     return (
       <article className="page">
@@ -58,8 +94,8 @@ export function CollectionPage() {
       </article>
     )
   }
-  const page = collection
-  const bullets = page.bullets.slice().sort((a, b) => a.sortOrder - b.sortOrder)
+  const page = draft && draft.id === collection.id ? draft : collection
+  const bullets = collection.bullets.slice().sort((a, b) => a.sortOrder - b.sortOrder)
   const linked = snapshot.entries.filter((entry) => entry.collectionIds.includes(page.id))
 
   const cycle = (bullet: CollectionBullet) => {
@@ -84,15 +120,26 @@ export function CollectionPage() {
           <input
             className="goal-title"
             aria-label="Collection title"
-            value={collection.title}
-            onChange={(event) => journal.updateCollection(collection.id, { title: event.target.value })}
+            value={page.title}
+            onChange={(event) => setDraft((current) => (current ? { ...current, title: event.target.value } : current))}
           />
         </div>
       </header>
       <div className="page-body">
         <div className="icon-row" role="radiogroup" aria-label="Cover mark">
-          {ICONS.map((icon) => (
-            <button key={icon} type="button" className={collection.icon === icon ? 'icon-pick on' : 'icon-pick'} aria-label={icon} onClick={() => journal.updateCollection(collection.id, { icon })}>
+          {COLLECTION_ICONS.map((icon) => (
+            <button
+              key={icon}
+              type="button"
+              className={page.icon === icon ? 'icon-pick on' : 'icon-pick'}
+              aria-label={COLLECTION_ICON_LABEL[icon]}
+              aria-pressed={page.icon === icon}
+              title={COLLECTION_ICON_LABEL[icon]}
+              onClick={() => {
+                const picked = icon
+                setDraft((current) => (current ? { ...current, icon: picked } : current))
+              }}
+            >
               <CollectionGlyph name={icon} />
             </button>
           ))}
@@ -102,22 +149,28 @@ export function CollectionPage() {
           rows={2}
           aria-label="Description"
           placeholder="What is this page for?"
-          value={collection.description}
-          onChange={(event) => journal.updateCollection(collection.id, { description: event.target.value })}
+          value={page.description}
+          onChange={(event) => setDraft((current) => (current ? { ...current, description: event.target.value } : current))}
         />
         <textarea
           className="ink-area prose"
           rows={6}
           aria-label="Freeform notes"
           placeholder="Write freely. An idea can stay an idea."
-          value={collection.content}
-          onChange={(event) => journal.updateCollection(collection.id, { content: event.target.value })}
+          value={page.content}
+          onChange={(event) => setDraft((current) => (current ? { ...current, content: event.target.value } : current))}
         />
         <div className="choice-row">
           <span className="whisper">New lines start as</span>
-          {(['note', 'task', 'event'] as const).map((type) => (
-            <button key={type} type="button" className={collection.defaultBullet === type ? 'choice on' : 'choice'} onClick={() => journal.updateCollection(collection.id, { defaultBullet: type })}>
-              {type}
+          {(['task', 'event', 'note'] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              className={page.defaultBullet === type ? 'choice on' : 'choice'}
+              aria-pressed={page.defaultBullet === type}
+              onClick={() => setDraft((current) => (current ? { ...current, defaultBullet: type } : current))}
+            >
+              {type === 'task' ? 'Task' : type === 'event' ? 'Event' : 'Note'}
             </button>
           ))}
         </div>
@@ -169,6 +222,13 @@ export function CollectionPage() {
           className="composer compact"
           onSubmit={(event) => {
             event.preventDefault()
+            journal.updateCollection(collection.id, {
+              title: page.title,
+              description: page.description,
+              content: page.content,
+              icon: page.icon,
+              defaultBullet: page.defaultBullet,
+            })
             journal.addCollectionBullet(collection.id, text)
             setText('')
           }}
