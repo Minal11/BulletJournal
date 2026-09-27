@@ -5,6 +5,7 @@ import { monthToMarkdown } from '../domain/markdown.ts'
 import { downloadText } from '../lib/download.ts'
 import { monthTasks } from '../domain/entries.ts'
 import { goalsForMonth } from '../domain/goals.ts'
+import type { Goal, MonthlyGoalFocus } from '../domain/types.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
 import { Composer, EntryRow } from '../components/entries.tsx'
@@ -27,8 +28,9 @@ export function MonthlyLogPage() {
   const goals = goalsForMonth(snapshot.goals, safeYear, safeMonth)
   const [adding, setAdding] = useState<number | null>(null)
   const [markText, setMarkText] = useState('')
-  const [focusGoal, setFocusGoal] = useState(goals[0]?.id ?? '')
+  const [focusGoal, setFocusGoal] = useState('')
   const [focusText, setFocusText] = useState('')
+  const [focusTitle, setFocusTitle] = useState('')
   const total = daysInMonth(safeYear, safeMonth)
   const prefix = `${safeYear}-${String(safeMonth).padStart(2, '0')}`
 
@@ -106,46 +108,46 @@ export function MonthlyLogPage() {
 
         <section>
           <h2>Monthly goal focus</h2>
-          {(!log || log.goalFocus.length === 0) && <EmptyNote>A few intentions for the month. Not a scorecard.</EmptyNote>}
-          <ul className="focus-list">
-            {(log?.goalFocus ?? []).map((focus) => {
-              const goal = snapshot.goals.find((item) => item.id === focus.goalId)
-              return (
-                <li key={focus.id}>
-                  {goal ? <Link to={`/goals/${goal.year}/${goal.quarter}`}>{goal.title}</Link> : <span>Goal</span>}
-                  <input
-                    className="ink-input"
-                    aria-label="Focus"
-                    value={focus.text}
-                    onChange={(event) => journal.updateFocus(safeYear, safeMonth, focus.id, event.target.value)}
-                  />
-                  <button type="button" className="quiet-btn" aria-label="Remove focus" onClick={() => journal.removeFocus(safeYear, safeMonth, focus.id)}>
-                    ×
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-          {goals.length > 0 && (
-            <form
-              className="inline-add"
-              onSubmit={(event) => {
-                event.preventDefault()
-                if (!focusGoal || !focusText.trim()) return
-                journal.addFocus(safeYear, safeMonth, { goalId: focusGoal, text: focusText.trim() })
-                setFocusText('')
-              }}
-            >
-              <div className="choice-row" role="radiogroup" aria-label="Goal for this focus">
+          <p className="whisper">A few intentions for the month. Not a scorecard.</p>
+          <SortableList
+            ids={(log?.goalFocus ?? []).map((focus) => focus.id)}
+            label="Monthly goal focus"
+            onReorder={(ids) => journal.reorderFocus(safeYear, safeMonth, ids)}
+          >
+            {(log?.goalFocus ?? []).map((focus) => (
+              <SortableRow key={focus.id} id={focus.id}>
+                <FocusRow focus={focus} goals={snapshot.goals} year={safeYear} month={safeMonth} />
+              </SortableRow>
+            ))}
+          </SortableList>
+          <form
+            className="inline-add"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const text = focusText.trim()
+              if (!text && !focusTitle.trim()) return
+              journal.addFocus(safeYear, safeMonth, { goalId: focusGoal, title: focusTitle.trim(), text })
+              setFocusText('')
+              setFocusTitle('')
+            }}
+          >
+            <label className="field">
+              <span>Goal</span>
+              <select aria-label="Linked goal" value={focusGoal} onChange={(event) => setFocusGoal(event.target.value)}>
+                <option value="">No linked goal</option>
                 {goals.map((goal) => (
-                  <button key={goal.id} type="button" className={focusGoal === goal.id ? 'choice on' : 'choice'} onClick={() => setFocusGoal(goal.id)}>
-                    {goal.title}
-                  </button>
+                  <option key={goal.id} value={goal.id}>
+                    {goal.title || 'Untitled goal'}
+                  </option>
                 ))}
-              </div>
-              <input className="ink-input" placeholder="→ what this month is for" value={focusText} onChange={(event) => setFocusText(event.target.value)} />
-            </form>
-          )}
+              </select>
+            </label>
+            <input className="ink-input" aria-label="Focus" placeholder="Family" value={focusTitle} onChange={(event) => setFocusTitle(event.target.value)} />
+            <input className="ink-input" aria-label="This month's focus" placeholder="This month's focus" value={focusText} onChange={(event) => setFocusText(event.target.value)} />
+            <button type="submit" className="quiet-btn">
+              Add focus
+            </button>
+          </form>
         </section>
 
         <section>
@@ -173,5 +175,58 @@ export function MonthlyLogPage() {
         </p>
       </div>
     </article>
+  )
+}
+
+function FocusRow({ focus, goals, year, month }: { focus: MonthlyGoalFocus; goals: Goal[]; year: number; month: number }) {
+  const [draft, setDraft] = useState(focus)
+  const [boundId, setBoundId] = useState(focus.id)
+  const [editing, setEditing] = useState(false)
+  if (focus.id !== boundId) {
+    setBoundId(focus.id)
+    setDraft(focus)
+    setEditing(false)
+  }
+  const goal = goals.find((item) => item.id === draft.goalId)
+  const heading = goal?.title || draft.title || 'Focus'
+  if (!editing) {
+    return (
+      <div className="focus-line">
+        <button type="button" className="quiet-btn" onClick={() => setEditing(true)}>
+          {heading}
+          {draft.text ? ` → ${draft.text}` : ''}
+        </button>
+        <button type="button" className="quiet-btn" aria-label="Remove focus" onClick={() => journal.removeFocus(year, month, focus.id)}>
+          ×
+        </button>
+      </div>
+    )
+  }
+  return (
+    <form
+      className="inline-add"
+      onSubmit={(event) => {
+        event.preventDefault()
+        journal.updateFocus(year, month, focus.id, { title: draft.title ?? '', goalId: draft.goalId, text: draft.text })
+        setEditing(false)
+      }}
+    >
+      <label className="field">
+        <span>Goal</span>
+        <select aria-label="Linked goal" value={draft.goalId} onChange={(event) => setDraft((current) => ({ ...current, goalId: event.target.value }))}>
+          <option value="">No linked goal</option>
+          {goals.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.title || 'Untitled goal'}
+            </option>
+          ))}
+        </select>
+      </label>
+      <input className="ink-input" aria-label="Focus" value={draft.title ?? ''} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} />
+      <input className="ink-input" aria-label="This month's focus" value={draft.text} onChange={(event) => setDraft((current) => ({ ...current, text: event.target.value }))} />
+      <button type="submit" className="quiet-btn">
+        Save
+      </button>
+    </form>
   )
 }

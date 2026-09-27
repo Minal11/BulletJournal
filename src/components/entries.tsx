@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { bulletLabel, markForEntry, TASK_STATUS_LABEL, TYPE_LABEL } from '../domain/bullets.ts'
+import { bulletLabel, markForEntry, SIGNIFIER_LABEL, TASK_STATUS_LABEL } from '../domain/bullets.ts'
 import { currentTime, formatComposerTime, normalizeTime, upcomingMonths } from '../domain/dates.ts'
 import { entryCaptions } from '../domain/migration.ts'
-import type { BulletType, JournalEntry, PlanItem, Signifier, TaskStatus } from '../domain/types.ts'
+import type { JournalEntry, PlanItem, Signifier, TaskStatus } from '../domain/types.ts'
+import { ENTRY_KIND_LABEL, ENTRY_KINDS, entryKindOf, parseEntryInput, storedEntry, textAfterSave, type EntryKind } from '../lib/entry-input.ts'
 import { claimEntryMenu, entryMenuOwner, menuOnScroll, placeEntryMenu, releaseEntryMenu } from '../lib/entry-menu.ts'
 import { composerKeyAction } from '../lib/keyboard.ts'
 import { journal } from '../state/store.ts'
@@ -15,6 +16,7 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
   const { snapshot } = useJournal()
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [draft, setDraft] = useState(entry.content)
+  const contentDirty = useRef(false)
   const [note, setNote] = useState(entry.note)
   const contentRef = useRef<HTMLTextAreaElement>(null)
   const [editingTime, setEditingTime] = useState(false)
@@ -22,7 +24,9 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
   const longPress = useRef(false)
   const timer = useRef(0)
 
-  useEffect(() => setDraft(entry.content), [entry.content])
+  useEffect(() => {
+    if (!contentDirty.current) setDraft(entry.content)
+  }, [entry.content])
   useEffect(() => {
     const node = contentRef.current
     if (!node || CSS.supports('field-sizing', 'content')) return
@@ -96,6 +100,7 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
         type="button"
         className="symbol-btn"
         aria-label={bulletLabel(entry)}
+        title={bulletLabel(entry)}
         aria-haspopup="menu"
         onContextMenu={(event) => {
           event.preventDefault()
@@ -130,11 +135,13 @@ export function EntryRow({ entry }: { entry: JournalEntry }) {
             aria-label="Entry"
             value={draft}
             onChange={(event) => {
+              contentDirty.current = true
               setDraft(event.target.value)
               event.target.style.height = 'auto'
               event.target.style.height = `${event.target.scrollHeight}px`
             }}
             onBlur={() => {
+              contentDirty.current = false
               if (cancelEdit.current) {
                 cancelEdit.current = false
                 setDraft(entry.content)
@@ -216,7 +223,7 @@ function EntrySignifiers({ entry, mark }: { entry: JournalEntry; mark: ReturnTyp
   return (
     <span className="entry-signifiers">
       {marks.map((item) => (
-        <span key={item} className="signifier">
+        <span key={item} className="signifier" title={SIGNIFIER_LABEL[item]} aria-label={SIGNIFIER_LABEL[item]}>
           {item === 'important' ? '★' : item === 'insight' ? '!' : '?'}
         </span>
       ))}
@@ -304,9 +311,9 @@ function EntryMenu({ entry, anchor, onClose }: { entry: JournalEntry; anchor: HT
       style={box ? { top: box.top, left: box.left, width: box.width, maxHeight: box.maxHeight } : { top: -9999, left: 0 }}
     >
       <p>Kind</p>
-      {(['task', 'event', 'note'] as BulletType[]).map((type) => (
-        <button key={type} type="button" role="menuitem" className={cls(entry.type === type && 'on')} onClick={() => { journal.setEntryType(entry.id, type); onClose() }}>
-          {TYPE_LABEL[type]}
+      {ENTRY_KINDS.map((item) => (
+        <button key={item} type="button" role="menuitem" className={cls(entryKindOf(entry) === item && 'on')} onClick={() => { journal.setEntryKind(entry.id, item); onClose() }}>
+          {ENTRY_KIND_LABEL[item]}
         </button>
       ))}
       {entry.type === 'task' && (
@@ -328,7 +335,7 @@ function EntryMenu({ entry, anchor, onClose }: { entry: JournalEntry; anchor: HT
       <p>Signifier</p>
       {(['important', 'insight', 'research'] as Signifier[]).map((signifier) => (
         <button key={signifier} type="button" role="menuitem" className={cls(entry.signifiers.includes(signifier) && 'on')} onClick={() => journal.toggleSignifier(entry.id, signifier)}>
-          {signifier === 'important' ? '★ Important' : signifier === 'insight' ? '! Insight' : '? Needs research'}
+          {signifier === 'important' ? `★ ${SIGNIFIER_LABEL.important}` : signifier === 'insight' ? `! ${SIGNIFIER_LABEL.insight}` : `? ${SIGNIFIER_LABEL.research}`}
         </button>
       ))}
       <p>Page</p>
@@ -366,8 +373,8 @@ export function Composer({
   placeholder?: string
 }) {
   const { snapshot } = useJournal()
-  const [type, setType] = useState<BulletType>('task')
-  const [signifiers, setSignifiers] = useState<Signifier[]>([])
+  const [kind, setKind] = useState<EntryKind>('task')
+  const [kindOpen, setKindOpen] = useState(false)
   const [text, setText] = useState('')
   const [time, setTime] = useState(snapshot.settings.showTimestampsByDefault ? formatComposerTime(currentTime()) : '')
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -390,59 +397,76 @@ export function Composer({
     node.style.height = `${node.scrollHeight}px`
   }, [text])
 
+  function chooseKind(next: EntryKind) {
+    setKind(next)
+    setKindOpen(false)
+    inputRef.current?.focus()
+  }
+
   async function submit() {
-    const draft = text
-    if (!draft.trim() || saving.current) return
+    const parsed = parseEntryInput(text, kind)
+    if (parsed.commandOnly) {
+      chooseKind(parsed.kind)
+      setText('')
+      setSaveError(null)
+      return
+    }
+    const draft = parsed.content.trim()
+    if (!draft || saving.current) return
     saving.current = true
     setSaveError(null)
+    const stored = storedEntry(parsed.kind)
     const timestamp = scope === 'day' ? normalizeTime(time) : null
     const entry = journal.addEntry({
       date,
       content: draft,
-      type,
+      type: stored.type,
       scope,
       timestamp,
       showTimestamp: Boolean(timestamp) && snapshot.settings.showTimestampsByDefault,
-      signifiers,
+      signifiers: stored.signifiers,
+      tags: stored.memory ? ['memory'] : undefined,
     })
     if (!entry) {
       saving.current = false
-      setSaveError('This line could not be kept.')
+      const kept = textAfterSave(false, text)
+      console.error('Journal entry save failed', { kind: parsed.kind, content: draft, date, error: 'rejected' })
+      setText(kept.text)
+      setSaveError(kept.message)
       return
     }
     await journal.flush()
     saving.current = false
     if (journal.getSnapshot().error) {
-      setSaveError(journal.getSnapshot().error)
+      const kept = textAfterSave(false, text)
+      console.error('Journal entry save failed', { kind: parsed.kind, content: draft, date, error: journal.getSnapshot().error })
+      setText(kept.text)
+      setSaveError(kept.message)
       return
     }
     setText('')
-    setSignifiers([])
+    setKind(parsed.kind)
     if (snapshot.settings.showTimestampsByDefault && scope === 'day') setTime(formatComposerTime(currentTime()))
     inputRef.current?.focus()
   }
 
   function applySlash(value: string) {
-    const parsed = value.match(/^\/(task|event|note|memory)\s+/i)
-    if (!parsed) {
+    const parsed = parseEntryInput(value, kind)
+    if (!value.trim().startsWith('/')) {
       setText(value)
       return
     }
-    const word = parsed[1]?.toLowerCase()
-    if (word === 'memory') {
-      setType('event')
-      setSignifiers(['important'])
-    } else if (word === 'note') {
-      setType('note')
-      setSignifiers([])
-    } else if (word === 'event') {
-      setType('event')
-      setSignifiers([])
-    } else {
-      setType('task')
-      setSignifiers([])
+    if (parsed.commandOnly) {
+      chooseKind(parsed.kind)
+      setText('')
+      return
     }
-    setText(value.slice(parsed[0].length))
+    if (parsed.content) {
+      setKind(parsed.kind)
+      setText(parsed.content)
+      return
+    }
+    setText(value)
   }
 
   return (
@@ -471,17 +495,28 @@ export function Composer({
         ) : null}
       </div>
       <span className="journal-margin" aria-hidden="true" />
-      <button
-        type="button"
-        className="symbol-btn"
-        aria-label={`New ${TYPE_LABEL[type]}. Change kind.`}
-        onClick={() => {
-          setSignifiers([])
-          setType(type === 'task' ? 'event' : type === 'event' ? 'note' : 'task')
-        }}
-      >
-        <InkMark name={signifiers.includes('important') && type === 'event' ? 'star' : type === 'task' ? 'task' : type === 'event' ? 'event' : 'note'} />
-      </button>
+      <div className="kind-picker">
+        <button
+          type="button"
+          className="symbol-btn"
+          aria-label={ENTRY_KIND_LABEL[kind]}
+          aria-expanded={kindOpen}
+          aria-haspopup="listbox"
+          title={ENTRY_KIND_LABEL[kind]}
+          onClick={() => setKindOpen((open) => !open)}
+        >
+          <InkMark name={kind === 'memory' ? 'star' : kind} />
+        </button>
+        {kindOpen && (
+          <div className="kind-menu" role="listbox" aria-label="Entry kind">
+            {ENTRY_KINDS.map((item) => (
+              <button key={item} type="button" role="option" aria-selected={kind === item} title={ENTRY_KIND_LABEL[item]} onClick={() => chooseKind(item)}>
+                {ENTRY_KIND_LABEL[item]}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <textarea
         ref={inputRef}
         className="composer-input"

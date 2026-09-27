@@ -1,4 +1,5 @@
 import { cyclePrimarySignifier, parseRapidLog, toggleSignifier } from '../domain/bullets.ts'
+import { storedEntry, type EntryKind } from '../lib/entry-input.ts'
 import { monthOf, todayISO } from '../domain/dates.ts'
 import { makeEntry, syncLinks, withEntryContent } from '../domain/entries.ts'
 import { blankGoal, blankReflection, blankReview, nextGoalStatus, syncReflection, syncReview } from '../domain/goals.ts'
@@ -196,6 +197,7 @@ export const journal = {
     timestamp?: string | null
     showTimestamp?: boolean
     signifiers?: Signifier[]
+    tags?: string[]
     goalIds?: string[]
     collectionIds?: string[]
   }): JournalEntry | null {
@@ -210,6 +212,7 @@ export const journal = {
       timestamp: input.timestamp ?? null,
       showTimestamp: input.showTimestamp ?? Boolean(input.timestamp),
       signifiers: [...new Set([...(input.signifiers ?? []), ...parsed.signifiers])],
+      tags: [...new Set([...(input.tags ?? []), ...(parsed.memory ? ['memory'] : [])])],
       goalIds: input.goalIds,
       collectionIds: input.collectionIds,
       taskStatus: parsed.type === 'task' ? 'open' : null,
@@ -279,6 +282,32 @@ export const journal = {
       ...current,
       entries: cleared.entries.map((item) =>
         item.id === id ? { ...item, type, taskStatus: null, updatedAt: new Date().toISOString() } : item,
+      ),
+      futureItems: cleared.futureItems,
+    })
+  },
+  setEntryKind(id: string, kind: EntryKind) {
+    const current = snap()
+    const entry = current.entries.find((item) => item.id === id)
+    if (!entry) return
+    const stored = storedEntry(kind)
+    const tags = stored.memory ? [...new Set([...entry.tags, 'memory'])] : entry.tags.filter((tag) => tag !== 'memory')
+    const leavingMemory = entry.tags.includes('memory') && !stored.memory
+    const signifiers = stored.memory ? (['important'] as Signifier[]) : leavingMemory ? entry.signifiers.filter((item) => item !== 'important') : entry.signifiers
+    if (stored.type === 'task') {
+      commit({
+        ...current,
+        entries: current.entries.map((item) =>
+          item.id === id ? { ...item, type: 'task', taskStatus: item.taskStatus ?? 'open', tags, signifiers, updatedAt: new Date().toISOString() } : item,
+        ),
+      })
+      return
+    }
+    const cleared = applyTaskStatus(current.entries, current.futureItems, id, 'open')
+    commit({
+      ...current,
+      entries: cleared.entries.map((item) =>
+        item.id === id ? { ...item, type: stored.type, taskStatus: null, tags, signifiers, updatedAt: new Date().toISOString() } : item,
       ),
       futureItems: cleared.futureItems,
     })
@@ -379,15 +408,27 @@ export const journal = {
     const monthlyLogs = upsert(current.monthlyLogs, { ...log, goalFocus: [...log.goalFocus, { ...focus, id: createId() }] })
     commit({ ...current, monthlyLogs })
   },
-  updateFocus(year: number, month: number, id: string, text: string) {
+  updateFocus(year: number, month: number, id: string, patch: Partial<Pick<MonthlyGoalFocus, 'text' | 'goalId' | 'title'>>) {
     const current = snap()
     commit({
       ...current,
       monthlyLogs: current.monthlyLogs.map((log) =>
         log.year === year && log.month === month
-          ? { ...log, goalFocus: log.goalFocus.map((item) => (item.id === id ? { ...item, text } : item)) }
+          ? { ...log, goalFocus: log.goalFocus.map((item) => (item.id === id ? { ...item, ...patch } : item)) }
           : log,
       ),
+    })
+  },
+  reorderFocus(year: number, month: number, ids: string[]) {
+    const current = snap()
+    const order = new Map(ids.map((id, index) => [id, index]))
+    commit({
+      ...current,
+      monthlyLogs: current.monthlyLogs.map((log) => {
+        if (log.year !== year || log.month !== month) return log
+        const goalFocus = log.goalFocus.slice().sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+        return { ...log, goalFocus }
+      }),
     })
   },
   removeFocus(year: number, month: number, id: string) {
@@ -402,7 +443,13 @@ export const journal = {
   addGoal(year: number, quarter: 1 | 2 | 3 | 4) {
     const current = snap()
     const sortOrder = current.goals.filter((goal) => goal.year === year && goal.quarter === quarter).length
-    commit({ ...current, goals: [...current.goals, blankGoal(year, quarter, sortOrder)] })
+    const goal = blankGoal(year, quarter, sortOrder)
+    commit({ ...current, goals: [...current.goals, goal] })
+    return goal.id
+  },
+  insertGoal(goal: Goal) {
+    const current = snap()
+    commit({ ...current, goals: [...current.goals.filter((item) => item.id !== goal.id), goal] })
   },
   updateGoal(id: string, patch: Partial<Goal>) {
     const current = snap()

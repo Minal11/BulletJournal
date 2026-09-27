@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { monthOf, quarterLabel, quarterOf, quarterSpan, todayISO } from '../domain/dates.ts'
-import { goalsForQuarter, GOAL_STATUS_LABEL, goalSymbol } from '../domain/goals.ts'
+import { blankGoal, goalsForQuarter, GOAL_STATUS_LABEL, goalSymbol, nextGoalStatus } from '../domain/goals.ts'
 import type { Goal, Quarter } from '../domain/types.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
@@ -28,6 +28,8 @@ export function GoalsPage() {
   const safeYear = Number.isFinite(year) ? year : 2026
   const goals = goalsForQuarter(snapshot.goals, safeYear, quarter)
   const [removing, setRemoving] = useState<string | null>(null)
+  const [creating, setCreating] = useState<Goal | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   return (
     <article className="page">
@@ -58,7 +60,43 @@ export function GoalsPage() {
             </SortableRow>
           ))}
         </SortableList>
-        <button type="button" className="quiet-btn add-goal" onClick={() => journal.addGoal(safeYear, quarter)}>
+        {creating && (
+          <GoalArticle
+            goal={creating}
+            index={goals.length + 1}
+            entries={snapshot.entries}
+            logs={snapshot.monthlyLogs}
+            persist={false}
+            saveError={saveError}
+            onRemove={() => {
+              setCreating(null)
+              setSaveError(null)
+            }}
+            onSave={async (draft) => {
+              if (!draft.title.trim() && !draft.goalText.trim()) {
+                setSaveError('Give the goal a name or a line before saving.')
+                return
+              }
+              journal.insertGoal({ ...draft, updatedAt: new Date().toISOString() })
+              await journal.flush()
+              if (journal.getSnapshot().error) {
+                setSaveError("Couldn't save this goal locally. Your text is still here.")
+                return
+              }
+              setSaveError(null)
+              setCreating(null)
+            }}
+          />
+        )}
+        <button
+          type="button"
+          className="quiet-btn add-goal"
+          onClick={() => {
+            if (creating) return
+            setSaveError(null)
+            setCreating(blankGoal(safeYear, quarter, goals.length))
+          }}
+        >
           Add a goal
         </button>
         <p className="page-links">
@@ -87,16 +125,49 @@ function GoalArticle({
   entries,
   logs,
   onRemove,
+  persist = true,
+  saveError,
+  onSave,
 }: {
   goal: Goal
   index: number
   entries: ReturnType<typeof useJournal>['snapshot']['entries']
   logs: ReturnType<typeof useJournal>['snapshot']['monthlyLogs']
   onRemove: () => void
+  persist?: boolean
+  saveError?: string | null
+  onSave?: (draft: Goal) => void
 }) {
+  const [draft, setDraft] = useState(goal)
+  const [boundId, setBoundId] = useState(goal.id)
+  if (goal.id !== boundId) {
+    setBoundId(goal.id)
+    setDraft(goal)
+  }
+  useEffect(() => {
+    if (!persist || draft.id !== goal.id) return
+    if (
+      draft.title === goal.title &&
+      draft.category === goal.category &&
+      draft.goalText === goal.goalText &&
+      draft.why === goal.why &&
+      draft.notes === goal.notes &&
+      draft.status === goal.status &&
+      draft.year === goal.year &&
+      draft.quarter === goal.quarter &&
+      draft.startDate === goal.startDate &&
+      draft.measures.join('\n') === goal.measures.join('\n') &&
+      draft.nextActions.join('\n') === goal.nextActions.join('\n')
+    ) {
+      return
+    }
+    const handle = window.setTimeout(() => journal.updateGoal(draft.id, draft), 400)
+    return () => window.clearTimeout(handle)
+  }, [draft, persist, goal])
   const related = entries.filter((entry) => entry.goalIds.includes(goal.id)).slice(0, 8)
   const focuses = logs.flatMap((log) => log.goalFocus.filter((focus) => focus.goalId === goal.id).map((focus) => ({ ...focus, year: log.year, month: log.month })))
   const today = todayISO()
+  const actions = draft.nextActions.length ? draft.nextActions : ['']
 
   return (
     <article className="goal">
@@ -105,33 +176,61 @@ function GoalArticle({
         <input
           className="goal-title"
           aria-label="Goal name"
-          value={goal.title}
+          value={draft.title}
           placeholder="Name"
-          onChange={(event) => journal.updateGoal(goal.id, { title: event.target.value, category: event.target.value })}
+          onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
         />
-        <button type="button" className="status-btn" onClick={() => journal.cycleGoal(goal.id)} aria-label={`Status ${GOAL_STATUS_LABEL[goal.status]}. Change status.`}>
-          <span aria-hidden="true">{goalSymbol(goal.status)}</span> {GOAL_STATUS_LABEL[goal.status]}
+        <button
+          type="button"
+          className="status-btn"
+          onClick={() => setDraft((current) => ({ ...current, status: nextGoalStatus(current.status) }))}
+          aria-label={`Status ${GOAL_STATUS_LABEL[draft.status]}. Change status.`}
+        >
+          <span aria-hidden="true">{goalSymbol(draft.status)}</span> {GOAL_STATUS_LABEL[draft.status]}
         </button>
       </header>
-      <InkField label="Goal" value={goal.goalText} onChange={(goalText) => journal.updateGoal(goal.id, { goalText })} rows={2} />
-      <InkField label="Why" value={goal.why} onChange={(why) => journal.updateGoal(goal.id, { why })} rows={2} />
-      <LineList label="Measures / signs of progress" items={goal.measures} onChange={(measures) => journal.updateGoal(goal.id, { measures })} />
+      <label className="field">
+        <span>Category</span>
+        <input className="ink-input" aria-label="Category" value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))} />
+      </label>
+      <div className="choice-row">
+        <label className="whisper">
+          Year{' '}
+          <input className="ink-input" aria-label="Year" type="number" value={draft.year} onChange={(event) => setDraft((current) => ({ ...current, year: Number(event.target.value) || current.year }))} />
+        </label>
+        <label className="whisper">
+          Quarter{' '}
+          <select aria-label="Quarter" value={draft.quarter} onChange={(event) => setDraft((current) => ({ ...current, quarter: Number(event.target.value) as Goal['quarter'] }))}>
+            <option value={1}>Q1</option>
+            <option value={2}>Q2</option>
+            <option value={3}>Q3</option>
+            <option value={4}>Q4</option>
+          </select>
+        </label>
+        <label className="whisper">
+          Start date{' '}
+          <input className="ink-input" aria-label="Start date" type="date" value={draft.startDate ?? ''} onChange={(event) => setDraft((current) => ({ ...current, startDate: event.target.value || null }))} />
+        </label>
+      </div>
+      <InkField live label="Goal" value={draft.goalText} onChange={(goalText) => setDraft((current) => ({ ...current, goalText }))} rows={2} />
+      <InkField live label="Why" value={draft.why} onChange={(why) => setDraft((current) => ({ ...current, why }))} rows={2} />
+      <LineList label="Measures / signs of progress" items={draft.measures} onChange={(measures) => setDraft((current) => ({ ...current, measures }))} />
       <div className="line-list">
         <h3>Next actions</h3>
-        {(goal.nextActions.length ? goal.nextActions : ['']).map((action, actionIndex) => (
-          <div className="line-row" key={`${goal.id}-action-${actionIndex}`}>
+        {actions.map((action, actionIndex) => (
+          <div className="line-row" key={`${draft.id}-action-${actionIndex}`}>
             <span aria-hidden="true">•</span>
             <input
               className="ink-input"
               value={action}
               aria-label={`Next action ${actionIndex + 1}`}
               onChange={(event) => {
-                const next = goal.nextActions.length ? goal.nextActions.slice() : ['']
+                const next = actions.slice()
                 next[actionIndex] = event.target.value
-                journal.updateGoal(goal.id, { nextActions: next })
+                setDraft((current) => ({ ...current, nextActions: next }))
               }}
             />
-            {action.trim() && (
+            {persist && action.trim() && (
               <button
                 type="button"
                 className="quiet-btn"
@@ -151,16 +250,29 @@ function GoalArticle({
             )}
           </div>
         ))}
-        <button type="button" className="quiet-btn" onClick={() => journal.updateGoal(goal.id, { nextActions: [...goal.nextActions, ''] })}>
+        <button type="button" className="quiet-btn" onClick={() => setDraft((current) => ({ ...current, nextActions: [...actions, ''] }))}>
           Another action
         </button>
       </div>
-      <InkField label="Notes" value={goal.notes} onChange={(notes) => journal.updateGoal(goal.id, { notes })} rows={2} placeholder="Optional" />
-      <p className="whisper">
-        <button type="button" className="quiet-btn" onClick={onRemove}>
-          Remove this goal
-        </button>
-      </p>
+      <InkField live label="Notes" value={draft.notes} onChange={(notes) => setDraft((current) => ({ ...current, notes }))} rows={2} placeholder="Optional" />
+      {!persist && (
+        <p className="page-links">
+          <button type="button" className="quiet-btn" onClick={() => onSave?.(draft)}>
+            Save
+          </button>
+          <button type="button" className="quiet-btn" onClick={onRemove}>
+            Cancel
+          </button>
+        </p>
+      )}
+      {saveError && <p className="composer-error">{saveError}</p>}
+      {persist && (
+        <p className="whisper">
+          <button type="button" className="quiet-btn" onClick={onRemove}>
+            Remove this goal
+          </button>
+        </p>
+      )}
       {focuses.length > 0 && (
         <div>
           <h3>Seen in a month</h3>

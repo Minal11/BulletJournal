@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { dayEntries, makeEntry, monthTasks } from '../domain/entries.ts'
+import { blankGoal } from '../domain/goals.ts'
 import { emptySnapshot } from '../domain/schema.ts'
 import { databaseName, diffSnapshots, shouldAttemptSync } from '../services/sync-diff.ts'
 import { journal } from '../state/store.ts'
@@ -90,5 +91,88 @@ describe('local journal saves', () => {
 
     await activateDatabase(first)
     expect((await loadJournal())?.entries.map((entry) => entry.content)).toContain('Private line for A')
+  })
+
+  it('does not keep a slash command that only chooses a kind', async () => {
+    await useFreshDatabase()
+    const before = journal.getSnapshot().snapshot.entries.length
+    expect(journal.addEntry({ date: '2026-09-27', content: '/memory', type: 'task', scope: 'day' })).toBeNull()
+    expect(journal.addEntry({ date: '2026-09-27', content: '/task', type: 'note', scope: 'day' })).toBeNull()
+    expect(journal.addEntry({ date: '2026-09-27', content: '/event', type: 'task', scope: 'month' })).toBeNull()
+    expect(journal.addEntry({ date: '2026-09-27', content: '/note', type: 'task', scope: 'month' })).toBeNull()
+    expect(journal.getSnapshot().snapshot.entries.length).toBe(before)
+    const dinner = journal.addEntry({ date: '2026-09-27', content: '/event Dinner with friends', type: 'task', scope: 'day' })
+    expect(dinner?.type).toBe('event')
+    expect(dinner?.content).toBe('Dinner with friends')
+    expect(dinner?.tags ?? []).not.toContain('memory')
+  })
+
+  it('saves a memory and still succeeds locally when Supabase is down', async () => {
+    await useFreshDatabase()
+    const entry = journal.addEntry({
+      date: '2026-09-27',
+      content: 'Ziva did something funny today',
+      type: 'event',
+      scope: 'day',
+      signifiers: ['important'],
+      tags: ['memory'],
+    })
+    await journal.flush()
+    expect(journal.getSnapshot().error).toBeNull()
+    const loaded = await loadJournal()
+    const saved = loaded?.entries.find((item) => item.id === entry?.id)
+    expect(saved?.content).toBe('Ziva did something funny today')
+    expect(saved?.tags).toContain('memory')
+    expect(saved?.type).toBe('event')
+  })
+
+  it('saves a monthly focus with or without a linked goal and reloads it', async () => {
+    await useFreshDatabase()
+    journal.addFocus(2026, 9, { goalId: '', title: 'Family', text: 'Two family outings' })
+    journal.addFocus(2026, 9, { goalId: 'goal-career', title: '', text: 'Complete 8 AI coding sessions' })
+    await journal.flush()
+    const loaded = await loadJournal()
+    const log = loaded?.monthlyLogs.find((item) => item.year === 2026 && item.month === 9)
+    expect(log?.goalFocus.map((item) => item.text)).toEqual(['Two family outings', 'Complete 8 AI coding sessions'])
+    expect(log?.goalFocus[0]?.goalId).toBe('')
+    expect(log?.goalFocus[0]?.title).toBe('Family')
+    journal.updateFocus(2026, 9, log?.goalFocus[0]?.id ?? '', { text: 'Three family outings' })
+    await journal.flush()
+    const again = await loadJournal()
+    expect(again?.monthlyLogs.find((item) => item.month === 9)?.goalFocus[0]?.text).toBe('Three family outings')
+  })
+
+  it('saves a collection icon and the default new-line kind', async () => {
+    await useFreshDatabase()
+    const id = journal.addCollection('Hawaii Trip')
+    expect(id).toBeTruthy()
+    journal.updateCollection(id ?? '', { description: 'Ideas and plans for December.', icon: 'plane', defaultBullet: 'note' })
+    await journal.flush()
+    const loaded = await loadJournal()
+    const collection = loaded?.collections.find((item) => item.id === id)
+    expect(collection?.title).toBe('Hawaii Trip')
+    expect(collection?.description).toBe('Ideas and plans for December.')
+    expect(collection?.icon).toBe('plane')
+    expect(collection?.defaultBullet).toBe('note')
+  })
+
+  it('saves a new goal without writing it until insert, then reloads it', async () => {
+    await useFreshDatabase()
+    const draft = blankGoal(2026, 4, 0)
+    draft.title = 'Career Growth'
+    draft.goalText = 'Become stronger in backend architecture.'
+    draft.why = 'Prepare for my next role.'
+    draft.measures = ['8 AI coding sessions']
+    draft.nextActions = ['Study Spring Boot architecture.']
+    expect(journal.getSnapshot().snapshot.goals.find((goal) => goal.id === draft.id)).toBeUndefined()
+    journal.insertGoal(draft)
+    await journal.flush()
+    expect(journal.getSnapshot().error).toBeNull()
+    const loaded = await loadJournal()
+    const goal = loaded?.goals.find((item) => item.id === draft.id)
+    expect(goal?.title).toBe('Career Growth')
+    expect(goal?.why).toBe('Prepare for my next role.')
+    expect(goal?.measures).toEqual(['8 AI coding sessions'])
+    expect(goal?.nextActions).toEqual(['Study Spring Boot architecture.'])
   })
 })

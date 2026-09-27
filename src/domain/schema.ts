@@ -293,6 +293,7 @@ function normalizeMonths(value: unknown): MonthlyLog[] {
       ? log.goalFocus.filter(isRecord).map((item) => ({
           id: asString(item.id, crypto.randomUUID()),
           goalId: asString(item.goalId),
+          title: asString(item.title),
           text: asString(item.text),
         }))
       : [],
@@ -443,7 +444,9 @@ function normalizeCollections(value: unknown): Collection[] {
             content: asString(bullet.content),
             taskStatus: STATUSES.has(bullet.taskStatus as TaskStatus) ? (bullet.taskStatus as TaskStatus) : null,
             checked: asBoolean(bullet.checked),
-            signifiers: [],
+            signifiers: Array.isArray(bullet.signifiers)
+              ? bullet.signifiers.filter((item): item is Signifier => SIGNIFIERS.has(item as Signifier))
+              : [],
             sortOrder: asNumber(bullet.sortOrder, index),
           }))
         : [],
