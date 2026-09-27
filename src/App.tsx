@@ -1,6 +1,6 @@
 import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { canOpenJournal, routeForGuest } from './lib/sign-out.ts'
-import { AppShell, JournalRoot } from './components/shell.tsx'
+import { AppShell, DemoRoot, JournalRoot } from './components/shell.tsx'
 import { AuthPage } from './pages/AuthPage.tsx'
 import { CollectionPage } from './pages/CollectionPage.tsx'
 import { CollectionsPage } from './pages/CollectionsPage.tsx'
@@ -47,6 +47,26 @@ export default function App() {
         <Routes>
           <Route path="sign-in" element={<AuthPage />} />
           <Route path="reset-password" element={<ResetPasswordPage />} />
+          {import.meta.env.DEV && (
+            <Route path="demo" element={<DemoRoot />}>
+              <Route element={<AppShell />}>
+                <Route index element={<TodayPage />} />
+                <Route path="day/:date" element={<TodayPage />} />
+                <Route path="month/:year/:month" element={<MonthlyLogPage />} />
+                <Route path="future" element={<FutureLogPage />} />
+                <Route path="goals" element={<GoalsRedirect />} />
+                <Route path="goals/:year/:quarter" element={<GoalsPage />} />
+                <Route path="collections" element={<CollectionsPage />} />
+                <Route path="collections/:id" element={<CollectionPage />} />
+                <Route path="reflections" element={<ReflectionsPage />} />
+                <Route path="reflection/:year/:month" element={<MonthlyReflectionPage />} />
+                <Route path="review/:year/:quarter" element={<QuarterlyReviewPage />} />
+                <Route path="search" element={<SearchPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+                <Route path="index" element={<IndexPage />} />
+              </Route>
+            </Route>
+          )}
           <Route element={<RequireAuth />}>
             <Route element={<ProtectedJournal />}>
               <Route index element={<TodayPage />} />

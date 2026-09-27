@@ -1,8 +1,9 @@
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { addDays, formatDayHeading, formatFriendlyDate, isISODate, isLastWeekOfMonth, monthOf, quarterOf, todayISO, weekdayShort, weekDates } from '../domain/dates.ts'
 import { dayEntries } from '../domain/entries.ts'
 import { goalsForMonth } from '../domain/goals.ts'
 import { tasksAwaitingMigration } from '../domain/migration.ts'
+import { withDemoPrefix } from '../lib/demo-route.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
 import { Composer, EntryRow, PlanBlock } from '../components/entries.tsx'
@@ -11,7 +12,9 @@ import { EmptyNote } from '../components/ui.tsx'
 
 export function TodayPage() {
   const { snapshot } = useJournal()
+  const location = useLocation()
   const params = useParams()
+  const href = (to: string) => withDemoPrefix(location.pathname, to)
   const today = todayISO()
   const date = params.date && isISODate(params.date) ? params.date : today
   const { year, month } = monthOf(date)
@@ -37,32 +40,32 @@ export function TodayPage() {
           <p className="whisper">Day = action + reality</p>
           <nav className="week-strip" aria-label="This week">
             {weekDates(date, snapshot.settings.firstDayOfWeek).map((dayDate) => (
-              <Link key={dayDate} to={dayDate === today ? '/' : `/day/${dayDate}`} className={dayDate === date ? 'on' : undefined}>
+              <Link key={dayDate} to={href(dayDate === today ? '/' : `/day/${dayDate}`)} className={dayDate === date ? 'on' : undefined}>
                 {weekdayShort(dayDate).slice(0, 1)} {monthOf(dayDate).day}
               </Link>
             ))}
           </nav>
         </div>
         <div className="today-turns">
-          <Link className="page-turn" to={`/day/${addDays(date, -1)}`}>
+          <Link className="page-turn" to={href(`/day/${addDays(date, -1)}`)}>
             ← {weekdayShort(addDays(date, -1))}
           </Link>
-          <Link className="page-turn" to={addDays(date, 1) === today ? '/' : `/day/${addDays(date, 1)}`}>
+          <Link className="page-turn" to={href(addDays(date, 1) === today ? '/' : `/day/${addDays(date, 1)}`)}>
             {weekdayShort(addDays(date, 1))} →
           </Link>
         </div>
       </header>
       <div className="page-body">
         {waiting.length > 0 && (
-          <aside className="margin-note">
+          <aside className="margin-note journal-notice">
             Something you scheduled for this month is still in the Future Log.{' '}
-            <Link to="/future">Review it</Link> before moving it.
+            <Link to={href('/future')}>Review it</Link> before moving it.
           </aside>
         )}
         {isLastWeekOfMonth(date) && openThisMonth > 0 && (
-          <aside className="margin-note">
+          <aside className="margin-note journal-notice">
             This month is nearly done. A few tasks are still open.{' '}
-            <Link to={`/reflection/${year}/${month}#migration`}>Walk through them</Link>.
+            <Link to={href(`/reflection/${year}/${month}#migration`)}>Walk through them</Link>.
           </aside>
         )}
         {log && log.goalFocus.length > 0 && (
@@ -91,9 +94,9 @@ export function TodayPage() {
           </section>
         )}
         {yesterdayOpen.length > 0 && (
-          <p className="whisper">
+          <p className="margin-note journal-notice">
             Yesterday still has {yesterdayOpen.length} open {yesterdayOpen.length === 1 ? 'task' : 'tasks'}.{' '}
-            <Link to={`/day/${addDays(date, -1)}`}>Look back</Link>
+            <Link to={href(`/day/${addDays(date, -1)}`)}>Look back</Link>
           </p>
         )}
         <section className="log-section">
@@ -118,9 +121,9 @@ export function TodayPage() {
         </section>
         <Composer date={date} />
         <nav className="page-links" aria-label="Nearby pages">
-          <Link to={`/month/${year}/${month}`}>Monthly Log</Link>
-          <Link to={`/goals/${quarter.year}/${quarter.quarter}`}>Goals</Link>
-          <Link to="/collections">Collections</Link>
+          <Link to={href(`/month/${year}/${month}`)}>Monthly Log</Link>
+          <Link to={href(`/goals/${quarter.year}/${quarter.quarter}`)}>Goals</Link>
+          <Link to={href('/collections')}>Collections</Link>
         </nav>
       </div>
     </article>

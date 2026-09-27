@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
+import { DemoTourButton } from '../components/demo-tour.tsx'
 import { useAuth } from '../state/auth.tsx'
 
 type Mode = 'sign-in' | 'create' | 'forgot'
@@ -82,6 +83,7 @@ export function AuthPage() {
               Forgot password?
             </button>
           )}
+          <DemoTourButton label="See how it works" />
         </div>
       </section>
     </main>

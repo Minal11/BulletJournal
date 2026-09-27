@@ -158,6 +158,24 @@ export const journal = {
       emit()
     }
   },
+  async openDemo() {
+    const token = ++sessionToken
+    trackChanges = false
+    await syncService.stop()
+    await journal.flush()
+    if (token !== sessionToken) return
+    const { buildTourJournal } = await import('../demo/tour-journal.ts')
+    await activateDatabase('MyBulletJournal-demo-tour')
+    journalBridge.getSnapshot = () => state.snapshot
+    journalBridge.replaceQuiet = () => undefined
+    const snapshot = buildTourJournal(new Date())
+    await saveJournal(snapshot)
+    if (token !== sessionToken) return
+    savedSnapshot = snapshot
+    state = { ready: true, error: null, snapshot, backupAt: null }
+    emit()
+    trackChanges = true
+  },
   async closeSession() {
     const token = ++sessionToken
     trackChanges = false

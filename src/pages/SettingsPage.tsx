@@ -10,6 +10,7 @@ import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
 import { useSync } from '../state/use-sync.ts'
 import { deleteDatabase } from '../storage/db.ts'
+import { DemoTourButton } from '../components/demo-tour.tsx'
 import { SignOutButton } from '../components/sign-out.tsx'
 import { Choice, PaperDialog } from '../components/ui.tsx'
 
@@ -259,6 +260,10 @@ export function SettingsPage() {
             </p>
           )}
           {message && <p className="whisper">{message}</p>}
+        </section>
+        <section>
+          <h2>Help</h2>
+          <DemoTourButton label="Watch demo tour" />
         </section>
         <section>
           <h2>Install</h2>

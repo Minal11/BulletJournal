@@ -10,6 +10,7 @@
   --rule: rgba(92, 72, 48, 0.14);
   --margin: #e4b1ab;
   --accent: #8d4e3c;
+  --journal-warning: #a84f43;
   --page-shadow:
     0 1px 0 rgba(255, 252, 245, 0.7) inset,
     12px 18px 40px rgba(72, 48, 24, 0.16),
@@ -65,6 +66,7 @@ html[data-theme="dark"] {
   --rule: rgba(243, 234, 220, 0.08);
   --margin: rgba(184, 104, 96, 0.7);
   --accent: #e0b09a;
+  --journal-warning: #e08b7f;
   --page-shadow:
     0 1px 0 rgba(255, 244, 220, 0.04) inset,
     16px 22px 50px rgba(0, 0, 0, 0.45);
@@ -488,6 +490,11 @@ h3 { font-size: 1.15rem; color: var(--ink-soft); }
   padding: 0.2rem 0 0.2rem 0.8rem;
   margin: 0 0 1rem;
 }
+.journal-notice {
+  color: var(--journal-warning);
+  border-left-color: var(--journal-warning);
+}
+.journal-notice a { color: var(--journal-warning); }
 .focus-strip li, .focus-list li, .index-list li, .future-list li, .memory-list li, .migration-list li {
   display: flex;
   gap: 0.55rem;
@@ -613,11 +620,23 @@ h3 { font-size: 1.15rem; color: var(--ink-soft); }
   font-size: 1.08rem;
 }
 .entry-menu button.on { text-decoration: underline; text-underline-offset: 3px; }
-.paper-dialog {
+.paper-dialog, .tour-dialog {
   width: min(28rem, calc(100vw - 2rem));
   padding: 1.1rem 1.2rem 1rem;
   border-radius: 2px 12px 10px 2px;
 }
+.tour-dialog {
+  width: min(56rem, calc(100vw - 1.5rem));
+  max-height: calc(100dvh - 1.5rem);
+  overflow: auto;
+  border: 0;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--page-shadow);
+}
+.tour-dialog::backdrop { background: rgba(40, 28, 16, 0.35); }
+html[data-theme="dark"] .tour-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.tour-dialog video { width: 100%; height: auto; display: block; background: #1c1916; }
 .paper-dialog::backdrop { background: rgba(40, 28, 16, 0.35); }
 html[data-theme="dark"] .paper-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 .paper-dialog h2 { margin-top: 0; }
