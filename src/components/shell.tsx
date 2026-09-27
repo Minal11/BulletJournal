@@ -142,7 +142,10 @@ export function AppShell() {
             <button type="button" onClick={() => setOpen(true)} aria-expanded={open} aria-controls="mobile-index">
               Index
             </button>
-            <SyncChip />
+            <div className="mobile-bar-end">
+              <SignOutButton />
+              <SyncChip />
+            </div>
           </div>
           {error && <p className="save-error">{error}</p>}
           <PullToSync scrollerRef={sheetRef} />

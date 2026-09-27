@@ -25,8 +25,9 @@ describe('notebook margin layout', () => {
     expect(css).toMatch(/\.day-head\.today-head\s*\{[^}]*margin:\s*0 0 1\.15rem/)
     expect(css).toMatch(/\.day-head\.today-head\s*\{\s*margin-left:\s*0/)
     expect(css).toMatch(/\.today-head h1\s*\{[^}]*white-space:\s*nowrap/)
-    expect(css).toContain('--time-col: 4.55rem')
-    expect(css).toContain('--time-col: 4.35rem')
+    expect(css).toContain('--time-col: 5.15rem')
+    expect(css).toContain('--time-col: 4.95rem')
+    expect(css).toContain('left: calc(var(--margin-gap) * -0.4)')
   })
 
   it('keeps signifiers in one group and does not pin the entry menu to the screen corner', () => {

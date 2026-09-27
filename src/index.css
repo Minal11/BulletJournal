@@ -644,14 +644,16 @@ html[data-theme="dark"] .paper-dialog::backdrop { background: rgba(0, 0, 0, 0.55
     text-decoration: underline;
     text-underline-offset: 3px;
   }
-  .page { padding: 0.45rem 0.55rem 5.5rem 0.2rem; --time-col: 4.55rem; --margin-gap: 0.4rem; --bullet-col: 2.15rem; }
-  .symbol-btn { width: 2.15rem; height: 2.15rem; }
+  .page { padding: 0.4rem 0.5rem 5.5rem 0.35rem; --time-col: 5.15rem; --margin-gap: 0.55rem; --bullet-col: 2.2rem; }
+  .symbol-btn { width: 2.2rem; height: 2.2rem; }
   .entry-time, .time-btn, .time-edit { font-size: 0.95rem; }
   .time-btn, .more-btn { min-height: 2.25rem; min-width: 2.25rem; }
   .page-body, .day-head { margin-left: calc(var(--time-col) + var(--margin-gap)); }
   .day-head.today-head { margin-left: 0; margin-right: 0; }
   .day-head.today-head h1 { font-size: clamp(1.55rem, 6.6vw, 2.4rem); }
-  .page-body::before { left: calc(var(--margin-gap) * -0.55); }
+  .page-body::before { left: calc(var(--margin-gap) * -0.4); }
+  .mobile-bar-end { display: flex; align-items: center; gap: 0.85rem; }
+  .mobile-bar .quiet-btn { font-size: 1.05rem; }
   .entry, .log-composer, .plan-list li, .plan-add { margin-left: calc(-1 * (var(--time-col) + var(--margin-gap))); }
   .future-list li, .composer.compact, .month-list { margin-left: 0; }
   .day-head { grid-template-columns: auto 1fr auto; }
@@ -735,7 +737,7 @@ html[data-theme="dark"] .paper-dialog::backdrop { background: rgba(0, 0, 0, 0.55
 .pull-sync span { padding: 0.15rem 0 0.4rem; }
 
 @media (max-width: 420px) {
-  .page { --time-col: 4.35rem; --margin-gap: 0.32rem; padding-left: 0.12rem; padding-right: 0.4rem; }
+  .page { --time-col: 4.95rem; --margin-gap: 0.5rem; padding-left: 0.28rem; padding-right: 0.4rem; }
   .cal-row { grid-template-columns: 3.6rem minmax(0, 1fr); }
 }
 
