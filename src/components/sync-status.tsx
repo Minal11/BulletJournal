@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { canDuplicate, recordLabel } from '../services/sync-diff.ts'
 import { syncService } from '../services/syncService.ts'
 import { useSync } from '../state/use-sync.ts'
@@ -7,6 +7,13 @@ import { PaperDialog } from './ui.tsx'
 export function SyncChip() {
   const sync = useSync()
   const [open, setOpen] = useState(false)
+  useEffect(() => {
+    function openSync() {
+      setOpen(true)
+    }
+    document.addEventListener('bj-open-sync', openSync)
+    return () => document.removeEventListener('bj-open-sync', openSync)
+  }, [])
   const label =
     sync.phase === 'syncing' ? '↻ Syncing' : sync.phase === 'offline' ? 'Offline — saved locally' : sync.phase === 'error' ? '! Sync issue' : '✓ Saved'
 

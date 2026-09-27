@@ -10,6 +10,7 @@ import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
 import { useSync } from '../state/use-sync.ts'
 import { deleteDatabase } from '../storage/db.ts'
+import { SignOutButton } from '../components/sign-out.tsx'
 import { Choice, PaperDialog } from '../components/ui.tsx'
 
 export function SettingsPage() {
@@ -133,7 +134,7 @@ export function SettingsPage() {
         </section>
         <section>
           <h2>Account</h2>
-          <p>{auth.user?.email}</p>
+          <p className="account-email">{auth.user?.email}</p>
           <label className="field">
             <span>Display name</span>
             <input className="ink-input" value={displayName} onChange={(event) => setDisplayName(event.target.value)} onBlur={() => void auth.updateDisplayName(displayName).then((error) => setMessage(error ?? 'Name kept.'))} />
@@ -155,15 +156,7 @@ export function SettingsPage() {
             >
               Change password
             </button>
-            <button
-              type="button"
-              className="quiet-btn"
-              onClick={() => {
-                void syncService.syncNow().finally(() => auth.signOut())
-              }}
-            >
-              Sign out
-            </button>
+            <SignOutButton />
           </div>
           <label className="field">
             <span>New password</span>

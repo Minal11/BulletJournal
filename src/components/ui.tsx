@@ -14,6 +14,7 @@ export function PaperDialog({
   children,
   confirmLabel,
   dismissLabel,
+  confirmDanger = true,
   onConfirm,
   onClose,
 }: {
@@ -22,6 +23,7 @@ export function PaperDialog({
   children: ReactNode
   confirmLabel: string
   dismissLabel?: string
+  confirmDanger?: boolean
   onConfirm: () => void
   onClose: () => void
 }) {
@@ -50,7 +52,7 @@ export function PaperDialog({
           {dismissLabel ?? (confirmLabel ? 'Keep it' : 'Close')}
         </button>
         {confirmLabel && (
-          <button type="button" className="quiet-btn danger" onClick={onConfirm}>
+          <button type="button" className={cls('quiet-btn', confirmDanger && 'danger')} onClick={onConfirm}>
             {confirmLabel}
           </button>
         )}
