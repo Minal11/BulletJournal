@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f1e6" />
+    <meta name="description" content="A quiet, local-first bullet journal." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Bullet Journal" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <title>My Bullet Journal</title>
+    <script>
+      try {
+        const raw = localStorage.getItem('bj-appearance')
+        const prefs = raw ? JSON.parse(raw) : { theme: 'system', paper: 'dotted', font: 'patrick', size: 'md' }
+        const dark = prefs.theme === 'dark' || (prefs.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        const root = document.documentElement
+        root.dataset.theme = dark ? 'dark' : 'light'
+        root.dataset.paper = prefs.paper || 'dotted'
+        root.dataset.font = prefs.font || 'patrick'
+        root.dataset.size = prefs.size || 'md'
+        root.style.colorScheme = dark ? 'dark' : 'light'
+      } catch (error) {
+        document.documentElement.dataset.theme = 'light'
+        document.documentElement.dataset.paper = 'dotted'
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
