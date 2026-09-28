@@ -1,5 +1,6 @@
 import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { canOpenJournal, routeForGuest } from './lib/sign-out.ts'
+import { JournalOpening } from './components/JournalOpening.tsx'
 import { AppShell, DemoRoot, JournalRoot } from './components/shell.tsx'
 import { AuthPage } from './pages/AuthPage.tsx'
 import { CollectionPage } from './pages/CollectionPage.tsx'
@@ -34,9 +35,11 @@ function RequireAuth() {
 
 function ProtectedJournal() {
   return (
-    <JournalRoot>
-      <AppShell />
-    </JournalRoot>
+    <JournalOpening>
+      <JournalRoot>
+        <AppShell />
+      </JournalRoot>
+    </JournalOpening>
   )
 }
 
