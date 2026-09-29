@@ -20,7 +20,9 @@ const TABS = [
   { id: 'today', label: 'Today', to: '/' },
   { id: 'month', label: 'Monthly Log', to: 'month' },
   { id: 'future', label: 'Future Log', to: '/future' },
+  { id: 'tasks', label: 'Master Tasks', to: '/tasks' },
   { id: 'goals', label: 'Goals', to: '/goals' },
+  { id: 'habits', label: 'Habit Tracker', to: '/habits' },
   { id: 'collections', label: 'Collections', to: '/collections' },
   { id: 'reflections', label: 'Reflections', to: '/reflections' },
 ] as const

@@ -21,6 +21,8 @@ export function buildIndex(snapshot: JournalSnapshot): IndexRow[] {
   }
 
   push({ id: 'future', label: 'Future Log', route: '/future', kind: 'future', defaultOrder: 0 })
+  push({ id: 'tasks', label: 'Master Tasks', route: '/tasks', kind: 'tasks', defaultOrder: 1 })
+  push({ id: 'habits', label: 'Habit Tracker', route: '/habits', kind: 'habits', defaultOrder: 2 })
 
   const quarters = new Map<string, { year: number; quarter: 1 | 2 | 3 | 4 }>()
   for (const goal of snapshot.goals) quarters.set(`${goal.year}-${goal.quarter}`, { year: goal.year, quarter: goal.quarter })
@@ -42,6 +44,7 @@ export function buildIndex(snapshot: JournalSnapshot): IndexRow[] {
     months.set(`${reflection.year}-${reflection.month}`, { year: reflection.year, month: reflection.month })
   }
   for (const entry of snapshot.entries) {
+    if (!entry.date) continue
     const [year, month] = entry.date.split('-').map(Number)
     if (year && month) months.set(`${year}-${month}`, { year, month })
   }

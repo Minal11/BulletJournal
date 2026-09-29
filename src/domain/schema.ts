@@ -1,3 +1,4 @@
+import { makeEntry } from './entries.ts'
 import { APP_ID, SCHEMA_VERSION } from './types.ts'
 import type {
   AppSettings,
@@ -7,6 +8,9 @@ import type {
   DayPage,
   FutureLogItem,
   Goal,
+  Habit,
+  HabitLog,
+  MonthlyHabitSelection,
   GoalStatus,
   JournalEntry,
   JournalSnapshot,
@@ -65,6 +69,9 @@ export function emptySnapshot(now = new Date()): JournalSnapshot {
     reflections: [],
     collections: [],
     futureItems: [],
+    habits: [],
+    habitLogs: [],
+    habitMonths: [],
     indexOverrides: [],
     settings: defaultSettings(),
   }
@@ -127,8 +134,13 @@ function v0ToV1(raw: Record<string, unknown>): Record<string, unknown> {
 }
 
 function normalizeEntry(value: unknown, warnings: string[]): JournalEntry | null {
-  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.date !== 'string') {
-    warnings.push('Skipped an entry that was missing an id or date.')
+  if (!isRecord(value) || typeof value.id !== 'string') {
+    warnings.push('Skipped an entry that was missing an id.')
+    return null
+  }
+  const date = typeof value.date === 'string' && value.date ? value.date : null
+  if (!date && value.type !== 'task') {
+    warnings.push('Skipped an entry that was missing a date.')
     return null
   }
   const type = BULLETS.has(value.type as BulletType) ? (value.type as BulletType) : 'note'
@@ -138,7 +150,7 @@ function normalizeEntry(value: unknown, warnings: string[]): JournalEntry | null
     : []
   return {
     id: value.id,
-    date: value.date,
+    date,
     timestamp: typeof value.timestamp === 'string' ? value.timestamp : null,
     showTimestamp: asBoolean(value.showTimestamp, Boolean(value.timestamp)),
     type,
@@ -153,6 +165,12 @@ function normalizeEntry(value: unknown, warnings: string[]): JournalEntry | null
     migratedFromId: typeof value.migratedFromId === 'string' ? value.migratedFromId : null,
     migratedToId: typeof value.migratedToId === 'string' ? value.migratedToId : null,
     migrationDate: typeof value.migrationDate === 'string' ? value.migrationDate : null,
+    scheduleHistory: Array.isArray(value.scheduleHistory)
+      ? value.scheduleHistory.flatMap((item) => {
+          if (!isRecord(item) || typeof item.changedAt !== 'string') return []
+          return [{ from: typeof item.from === 'string' ? item.from : null, to: typeof item.to === 'string' ? item.to : null, changedAt: item.changedAt }]
+        })
+      : [],
     sortOrder: asNumber(value.sortOrder),
     createdAt: asString(value.createdAt, new Date(0).toISOString()),
     updatedAt: asString(value.updatedAt, new Date(0).toISOString()),
@@ -231,26 +249,109 @@ export function migrateSnapshot(input: unknown, now = new Date()): ValidationRes
     reflections: normalizeReflections(current.reflections),
     collections: normalizeCollections(current.collections),
     futureItems: normalizeFuture(current.futureItems),
+    habits: normalizeHabits(current.habits),
+    habitLogs: normalizeHabitLogs(current.habitLogs),
+    habitMonths: normalizeHabitMonths(current.habitMonths),
     indexOverrides: normalizeOverrides(current.indexOverrides),
     settings: normalizeSettings(current.settings),
   }
-  const dates = entries.map((entry) => entry.date).sort()
+  const adopted = adoptNextActions(snapshot, now)
+  const dates = adopted.entries.map((entry) => entry.date).filter((date): date is string => Boolean(date)).sort()
   return {
     ok: true,
     errors,
     warnings,
     summary: {
-      entries: entries.length,
+      entries: adopted.entries.length,
       goals: snapshot.goals.length,
       collections: snapshot.collections.length,
       reflections: snapshot.reflections.length,
       reviews: snapshot.reviews.length,
-      futureItems: snapshot.futureItems.length,
+      futureItems: adopted.futureItems.length,
       from: dates[0] ?? null,
       to: dates[dates.length - 1] ?? null,
     },
-    snapshot,
+    snapshot: adopted,
   }
+}
+
+export function adoptNextActions(snapshot: JournalSnapshot, now: Date): JournalSnapshot {
+  const entries = snapshot.entries.slice()
+  const goals = snapshot.goals.map((goal) => {
+    for (const action of goal.nextActions) {
+      const content = action.trim()
+      if (!content) continue
+      const already = entries.some((entry) => entry.type === 'task' && entry.goalIds.includes(goal.id) && entry.content === content)
+      if (already) continue
+      entries.push(
+        makeEntry({
+          date: null,
+          content,
+          type: 'task',
+          goalIds: [goal.id],
+          timestamp: null,
+          showTimestamp: false,
+          sortOrder: entries.length,
+          now,
+        }),
+      )
+    }
+    return { ...goal, nextActions: [] }
+  })
+  return { ...snapshot, entries, goals }
+}
+
+function normalizeHabits(value: unknown): Habit[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== 'string') return []
+    return [{
+      id: item.id,
+      name: asString(item.name),
+      description: asString(item.description),
+      activeFrom: asString(item.activeFrom, '1970-01-01'),
+      inactiveFrom: typeof item.inactiveFrom === 'string' ? item.inactiveFrom : null,
+      archived: asBoolean(item.archived),
+      defaultForFutureMonths: asBoolean(item.defaultForFutureMonths),
+      sortOrder: asNumber(item.sortOrder),
+      createdAt: asString(item.createdAt, new Date(0).toISOString()),
+      updatedAt: asString(item.updatedAt, new Date(0).toISOString()),
+    }]
+  })
+}
+
+function normalizeHabitLogs(value: unknown): HabitLog[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  return value.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== 'string' || typeof item.habitId !== 'string' || typeof item.date !== 'string') return []
+    const key = `${item.habitId}:${item.date}`
+    if (seen.has(key)) return []
+    seen.add(key)
+    return [{
+      id: item.id,
+      habitId: item.habitId,
+      date: item.date,
+      completed: asBoolean(item.completed),
+      createdAt: asString(item.createdAt, new Date(0).toISOString()),
+      updatedAt: asString(item.updatedAt, new Date(0).toISOString()),
+    }]
+  })
+}
+
+function normalizeHabitMonths(value: unknown): MonthlyHabitSelection[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== 'string' || typeof item.habitId !== 'string') return []
+    return [{
+      id: item.id,
+      year: asNumber(item.year),
+      month: asNumber(item.month),
+      habitId: item.habitId,
+      enabled: asBoolean(item.enabled, true),
+      updatedAt: asString(item.updatedAt, new Date(0).toISOString()),
+    }]
+  })
 }
 
 function normalizeDays(value: unknown): DayPage[] {
@@ -533,6 +634,9 @@ export function mergeSnapshots(local: JournalSnapshot, incoming: JournalSnapshot
     reflections: mergeById(local.reflections, incoming.reflections),
     collections: mergeById(local.collections, incoming.collections),
     futureItems: mergeById(local.futureItems, incoming.futureItems),
+    habits: mergeById(local.habits ?? [], incoming.habits ?? []),
+    habitLogs: mergeById(local.habitLogs ?? [], incoming.habitLogs ?? []),
+    habitMonths: mergeById(local.habitMonths ?? [], incoming.habitMonths ?? []),
     indexOverrides: mergeById(
       local.indexOverrides.map((item) => ({ ...item, updatedAt: '' })),
       incoming.indexOverrides.map((item) => ({ ...item, updatedAt: '1' })),

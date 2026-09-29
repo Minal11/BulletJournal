@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export const APP_ID = 'my-bullet-journal' as const
 
@@ -44,9 +44,16 @@ export type CollectionIcon =
 
 export type Quarter = 1 | 2 | 3 | 4
 
+export interface ScheduleChange {
+  from: string | null
+  to: string | null
+  changedAt: string
+}
+
 export interface JournalEntry {
   id: string
-  date: string
+  /** Null means an open task still lives on the Master Task list. */
+  date: string | null
   timestamp: string | null
   showTimestamp: boolean
   type: BulletType
@@ -61,6 +68,7 @@ export interface JournalEntry {
   migratedFromId: string | null
   migratedToId: string | null
   migrationDate: string | null
+  scheduleHistory: ScheduleChange[]
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -241,6 +249,37 @@ export interface FutureLogItem {
   updatedAt: string
 }
 
+export interface Habit {
+  id: string
+  name: string
+  description: string
+  activeFrom: string
+  inactiveFrom: string | null
+  archived: boolean
+  defaultForFutureMonths: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface HabitLog {
+  id: string
+  habitId: string
+  date: string
+  completed: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MonthlyHabitSelection {
+  id: string
+  year: number
+  month: number
+  habitId: string
+  enabled: boolean
+  updatedAt: string
+}
+
 export interface IndexOverride {
   id: string
   hidden: boolean
@@ -270,6 +309,9 @@ export interface JournalSnapshot {
   reflections: MonthlyReflection[]
   collections: Collection[]
   futureItems: FutureLogItem[]
+  habits: Habit[]
+  habitLogs: HabitLog[]
+  habitMonths: MonthlyHabitSelection[]
   indexOverrides: IndexOverride[]
   settings: AppSettings
 }
@@ -278,7 +320,7 @@ export interface IndexRow {
   id: string
   label: string
   route: string
-  kind: 'future' | 'goals' | 'month' | 'reflection' | 'review' | 'collection'
+  kind: 'future' | 'goals' | 'month' | 'reflection' | 'review' | 'collection' | 'tasks' | 'habits'
   pinned: boolean
   hidden: boolean
   sortOrder: number
@@ -299,7 +341,7 @@ export interface SearchFilters {
 
 export interface SearchHit {
   id: string
-  kind: 'entry' | 'collection' | 'goal' | 'reflection' | 'review' | 'future' | 'bullet'
+  kind: 'entry' | 'collection' | 'goal' | 'reflection' | 'review' | 'future' | 'bullet' | 'habit'
   route: string
   meta: string
   symbol: string

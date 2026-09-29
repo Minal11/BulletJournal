@@ -4,7 +4,7 @@ import { dateInMonth, formatMonthYear, formatShortDate, monthName } from '../dom
 import { CHECKIN_LABEL, goalsForMonth, moodSymbol, nextMood } from '../domain/goals.ts'
 import { journalPatterns } from '../domain/insights.ts'
 import { tasksAwaitingMigration } from '../domain/migration.ts'
-import type { MigrationAction, MonthlyReflection } from '../domain/types.ts'
+import type { JournalEntry, MigrationAction, MonthlyReflection } from '../domain/types.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
 import { InkMark } from '../components/marks.tsx'
@@ -31,11 +31,11 @@ export function MonthlyReflectionPage() {
   }
 
   const goals = goalsForMonth(snapshot.goals, year, month)
-  const monthEntries = snapshot.entries.filter((entry) => dateInMonth(entry.date, year, month))
+  const monthEntries = snapshot.entries.filter((entry) => entry.date && dateInMonth(entry.date, year, month))
   const patterns = journalPatterns(monthEntries)
   const memories = reflection.memoryEntryIds
     .map((id) => snapshot.entries.find((entry) => entry.id === id))
-    .filter((entry) => entry !== undefined)
+    .filter((entry): entry is JournalEntry & { date: string } => Boolean(entry?.date))
   const waiting = tasksAwaitingMigration(snapshot.entries, year, month)
   const patch = (recipe: (current: MonthlyReflection) => MonthlyReflection) => journal.updateReflection(reflection.id, recipe)
 

@@ -3,8 +3,8 @@ import { createId } from './ids.ts'
 import type { BulletType, Collection, EntryScope, Goal, JournalEntry, Signifier, TaskStatus } from './types.ts'
 
 export function makeEntry(
-  input: {
-    date: string
+    input: {
+    date: string | null
     content: string
     type?: BulletType
     scope?: EntryScope
@@ -44,6 +44,7 @@ export function makeEntry(
     migratedFromId: input.migratedFromId ?? null,
     migratedToId: input.migratedToId ?? null,
     migrationDate: input.migrationDate ?? null,
+    scheduleHistory: [],
     sortOrder: input.sortOrder ?? 0,
     createdAt: iso,
     updatedAt: iso,
@@ -80,7 +81,7 @@ export function dayEntries(entries: JournalEntry[], date: string, manual: boolea
 export function monthTasks(entries: JournalEntry[], year: number, month: number): JournalEntry[] {
   const prefix = `${year}-${String(month).padStart(2, '0')}`
   return entries
-    .filter((entry) => entry.scope === 'month' && entry.date.startsWith(prefix))
+    .filter((entry) => entry.scope === 'month' && entry.date?.startsWith(prefix))
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt))
 }

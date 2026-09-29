@@ -10,6 +10,9 @@ export const CLOUD_TABLE: Record<EntityKind, string> = {
   reflection: 'monthly_reflections',
   collection: 'collections',
   future: 'future_log_items',
+  habit: 'habits',
+  habitLog: 'habit_logs',
+  habitMonth: 'monthly_habit_selections',
   index: 'index_overrides',
   settings: 'app_settings',
 }
@@ -86,6 +89,27 @@ export function toCloudRow(userId: string, op: SyncOp): Record<string, unknown> 
     row.description = collection.description ?? ''
     row.tags = collection.tags ?? []
     row.archived = Boolean(collection.archived)
+  }
+  if (op.kind === 'habit' && op.payload && typeof op.payload === 'object') {
+    const habit = op.payload as { name?: string; description?: string; activeFrom?: string; inactiveFrom?: string | null; archived?: boolean }
+    row.name = habit.name ?? ''
+    row.description = habit.description ?? ''
+    row.active_from = habit.activeFrom
+    row.inactive_from = habit.inactiveFrom
+    row.archived = Boolean(habit.archived)
+  }
+  if (op.kind === 'habitLog' && op.payload && typeof op.payload === 'object') {
+    const log = op.payload as { habitId?: string; date?: string; completed?: boolean }
+    row.habit_id = log.habitId
+    row.date = log.date
+    row.completed = Boolean(log.completed)
+  }
+  if (op.kind === 'habitMonth' && op.payload && typeof op.payload === 'object') {
+    const selection = op.payload as { year?: number; month?: number; habitId?: string; enabled?: boolean }
+    row.year = selection.year
+    row.month = selection.month
+    row.habit_id = selection.habitId
+    row.enabled = Boolean(selection.enabled)
   }
   if (op.kind === 'future' && op.payload && typeof op.payload === 'object') {
     const item = op.payload as { targetYear?: number; targetMonth?: number; type?: string; content?: string }
