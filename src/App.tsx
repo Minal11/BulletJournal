@@ -6,6 +6,8 @@ import { AuthPage } from './pages/AuthPage.tsx'
 import { CollectionPage } from './pages/CollectionPage.tsx'
 import { CollectionsPage } from './pages/CollectionsPage.tsx'
 import { FutureLogPage } from './pages/FutureLogPage.tsx'
+import { HabitsPage } from './pages/HabitsPage.tsx'
+import { MasterTasksPage } from './pages/MasterTasksPage.tsx'
 import { GoalsPage, GoalsRedirect } from './pages/GoalsPage.tsx'
 import { IndexPage } from './pages/IndexPage.tsx'
 import { MonthlyLogPage } from './pages/MonthlyLogPage.tsx'
@@ -57,6 +59,8 @@ export default function App() {
                 <Route path="day/:date" element={<TodayPage />} />
                 <Route path="month/:year/:month" element={<MonthlyLogPage />} />
                 <Route path="future" element={<FutureLogPage />} />
+                <Route path="tasks" element={<MasterTasksPage />} />
+                <Route path="habits" element={<HabitsPage />} />
                 <Route path="goals" element={<GoalsRedirect />} />
                 <Route path="goals/:year/:quarter" element={<GoalsPage />} />
                 <Route path="collections" element={<CollectionsPage />} />
@@ -76,6 +80,8 @@ export default function App() {
               <Route path="day/:date" element={<TodayPage />} />
               <Route path="month/:year/:month" element={<MonthlyLogPage />} />
               <Route path="future" element={<FutureLogPage />} />
+              <Route path="tasks" element={<MasterTasksPage />} />
+              <Route path="habits" element={<HabitsPage />} />
               <Route path="goals" element={<GoalsRedirect />} />
               <Route path="goals/:year/:quarter" element={<GoalsPage />} />
               <Route path="collections" element={<CollectionsPage />} />

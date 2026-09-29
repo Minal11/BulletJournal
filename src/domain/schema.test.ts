@@ -15,7 +15,7 @@ describe('import and storage migrations', () => {
     })
     expect(result.ok).toBe(true)
     expect(result.warnings.some((warning) => warning.includes('older backup'))).toBe(true)
-    expect(result.snapshot?.schemaVersion).toBe(1)
+    expect(result.snapshot?.schemaVersion).toBe(2)
     expect(result.snapshot?.entries[0]).toMatchObject({ type: 'task', taskStatus: 'complete', content: 'Old task' })
     expect(result.summary.goals).toBe(1)
     expect(result.summary.from).toBe('2026-09-01')

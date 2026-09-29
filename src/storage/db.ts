@@ -4,6 +4,9 @@ import type {
   DayPage,
   FutureLogItem,
   Goal,
+  Habit,
+  HabitLog,
+  MonthlyHabitSelection,
   IndexOverride,
   JournalEntry,
   JournalSnapshot,
@@ -62,6 +65,9 @@ export class JournalDatabase extends Dexie {
   reflections!: Table<MonthlyReflection, string>
   collections!: Table<Collection, string>
   futureItems!: Table<FutureLogItem, string>
+  habits!: Table<Habit, string>
+  habitLogs!: Table<HabitLog, string>
+  habitMonths!: Table<MonthlyHabitSelection, string>
   indexOverrides!: Table<IndexOverride, string>
   meta!: Table<MetaRow, string>
   settings!: Table<SettingsRow, string>
@@ -74,6 +80,14 @@ export class JournalDatabase extends Dexie {
     this.version(1).stores({ ...STORES })
     this.version(2).stores({
       ...STORES,
+      syncOps: 'key, syncStatus, kind',
+      syncMeta: 'id',
+    })
+    this.version(3).stores({
+      ...STORES,
+      habits: 'id, archived, sortOrder',
+      habitLogs: 'id, habitId, date, [habitId+date]',
+      habitMonths: 'id, year, month, habitId, [year+month+habitId]',
       syncOps: 'key, syncStatus, kind',
       syncMeta: 'id',
     })

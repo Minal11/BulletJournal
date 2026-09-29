@@ -33,16 +33,17 @@ export function searchJournal(snapshot: JournalSnapshot, filters: SearchFilters)
     if (filters.collectionId && !entry.collectionIds.includes(filters.collectionId)) continue
     if (filters.goalId && !entry.goalIds.includes(filters.goalId)) continue
     if (filters.tag && !entry.tags.includes(filters.tag.toLowerCase())) continue
-    if (filters.from && entry.date < filters.from) continue
-    if (filters.to && entry.date > filters.to) continue
+    if ((filters.from || filters.to) && !entry.date) continue
+    if (filters.from && entry.date && entry.date < filters.from) continue
+    if (filters.to && entry.date && entry.date > filters.to) continue
     const haystack = `${entry.content} ${entry.note} ${entry.tags.join(' ')}`
     if (query && !includes(haystack, query)) continue
     const time = entry.showTimestamp && entry.timestamp ? ` · ${formatDisplayTime(entry.timestamp)}` : ''
     hits.push({
       id: entry.id,
       kind: 'entry',
-      route: `/day/${entry.date}`,
-      meta: `${formatShortDate(entry.date)}${time}`,
+      route: entry.date ? `/day/${entry.date}` : '/tasks',
+      meta: entry.date ? `${formatShortDate(entry.date)}${time}` : `Master tasks${time}`,
       symbol: symbolChar(markForEntry(entry)),
       text: entry.content,
     })
@@ -99,6 +100,18 @@ export function searchJournal(snapshot: JournalSnapshot, filters: SearchFilters)
         meta: 'Reflection',
         symbol: '–',
         text: reflection.monthInOneSentence || `${monthName(reflection.month)} reflection`,
+      })
+    }
+    for (const habit of snapshot.habits ?? []) {
+      const haystack = `${habit.name} ${habit.description}`
+      if (query && !includes(haystack, query)) continue
+      hits.push({
+        id: habit.id,
+        kind: 'habit',
+        route: '/habits',
+        meta: 'Habit',
+        symbol: '☐',
+        text: habit.name,
       })
     }
     for (const review of snapshot.reviews) {

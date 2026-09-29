@@ -784,3 +784,47 @@ html[data-theme="dark"] .paper-dialog::backdrop { background: rgba(0, 0, 0, 0.55
   .cal-row { grid-template-columns: 3.6rem minmax(0, 1fr); }
 }
 
+.goal-head { flex-wrap: wrap; align-items: center; }
+.goal-chevron { font-family: var(--font-hand); background: none; border: 0; font-size: 1.15rem; padding: 0.15rem 0.3rem; }
+.goal-title { flex: 1 1 8rem; }
+.goal-meta, .goal-meter { flex: 1 1 100%; margin: 0.1rem 0 0; }
+.goal-meter { display: flex; align-items: center; gap: 0.55rem; }
+.goal-bar {
+  display: block;
+  width: 7.5rem;
+  height: 0.32rem;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+  position: relative;
+}
+.goal-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--goal-progress, 0%);
+  background: var(--ink-soft);
+}
+.goal-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 180ms ease; }
+.goal.is-open .goal-fold { grid-template-rows: 1fr; }
+.goal-fold > * { overflow: hidden; }
+.habit-scroll { overflow-x: auto; max-width: 100%; }
+.habit-grid { border-collapse: collapse; width: max-content; min-width: 100%; }
+.habit-grid th, .habit-grid td { padding: 0.28rem 0.65rem; text-align: center; font-weight: 400; }
+.habit-grid thead th, .habit-grid tbody th { font-family: var(--font-hand); }
+.habit-grid th:first-child, .habit-grid tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+  background: var(--paper);
+}
+.habit-check {
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  font-family: var(--font-hand);
+  background: none;
+  border: 0;
+  font-size: 1.2rem;
+}
+.master-list li { margin: 0.85rem 0; }
+.menu-date input, .page-links input[type="date"] { font-family: var(--font-hand); }
+

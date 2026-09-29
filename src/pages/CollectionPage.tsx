@@ -241,7 +241,7 @@ export function CollectionPage() {
             <ul className="plain-list">
               {linked.map((entry) => (
                 <li key={entry.id}>
-                  <Link to={entry.date === today ? '/' : `/day/${entry.date}`}>{entry.content}</Link>
+                  <Link to={!entry.date ? '/tasks' : entry.date === today ? '/' : `/day/${entry.date}`}>{entry.content}</Link>
                 </li>
               ))}
             </ul>

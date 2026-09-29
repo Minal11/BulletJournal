@@ -39,12 +39,12 @@ function targetFor(entry: JournalEntry, options?: MigrationContext): { year: num
   if (options?.targetYear && options.targetMonth) {
     return { year: options.targetYear, month: options.targetMonth }
   }
-  return nextMonthOf(entry.date)
+  return nextMonthOf(entry.date ?? '1970-01-01')
 }
 
 function makeForwardChild(parent: JournalEntry, now: Date, monthly: boolean): JournalEntry {
   if (monthly) {
-    const target = nextMonthOf(parent.date)
+    const target = nextMonthOf(parent.date ?? '1970-01-01')
     return makeEntry({
       date: `${target.year}-${String(target.month).padStart(2, '0')}-01`,
       content: parent.content,
@@ -61,7 +61,7 @@ function makeForwardChild(parent: JournalEntry, now: Date, monthly: boolean): Jo
     })
   }
   return makeEntry({
-    date: addDays(parent.date, 1),
+    date: addDays(parent.date ?? todayISO(now), 1),
     content: parent.content,
     type: 'task',
     scope: 'day',
@@ -242,21 +242,21 @@ export function entryCaptions(
 ): string[] {
   if (entry.migratedFromId) {
     const parent = entries.find((item) => item.id === entry.migratedFromId)
-    if (parent) return [`From ${formatShortDate(parent.date)}`]
+    if (parent?.date) return [`From ${formatShortDate(parent.date)}`]
   }
   if (entry.taskStatus === 'migrated' && entry.migratedToId) {
     const child = entries.find((item) => item.id === entry.migratedToId)
     if (!child) return ['> Migrated']
-    if (child.scope === 'day' && child.date === addDays(entry.date, 1)) return ['> Move to tomorrow.']
+    if (child.scope === 'day' && entry.date && child.date === addDays(entry.date, 1)) return ['> Move to tomorrow.']
     if (child.scope === 'month') {
-      const parts = child.date.split('-')
+      const parts = (child.date ?? '').split('-')
       const month = monthName(Number(parts[1]))
       return [
-        `Created ${formatShortDate(entry.date)}`,
-        `Migrated ${formatShortDate(entry.migrationDate ?? entry.date)} → ${month}`,
+        `Created ${entry.date ? formatShortDate(entry.date) : 'earlier'}`,
+        `Migrated ${formatShortDate(entry.migrationDate ?? entry.date ?? child.date ?? '')} → ${month}`,
       ]
     }
-    return [`Migrated → ${formatShortDate(child.date)}`]
+    return [`Migrated → ${child.date ? formatShortDate(child.date) : 'later'}`]
   }
   if (entry.taskStatus === 'scheduled') {
     const item = futureItems.find((future) => future.sourceEntryId === entry.id && !future.reviewed)
@@ -266,12 +266,12 @@ export function entryCaptions(
   return []
 }
 
-export function tasksAwaitingMigration(entries: JournalEntry[], year: number, month: number): JournalEntry[] {
+export function tasksAwaitingMigration(entries: JournalEntry[], year: number, month: number) {
   const prefix = `${year}-${String(month).padStart(2, '0')}`
   return entries
-    .filter((entry) => entry.type === 'task' && entry.taskStatus === 'open' && entry.date.startsWith(prefix))
+    .filter((entry): entry is JournalEntry & { date: string } => entry.type === 'task' && entry.taskStatus === 'open' && Boolean(entry.date?.startsWith(prefix)))
     .slice()
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.timestamp ?? '').localeCompare(b.timestamp ?? ''))
+    .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '') || (a.timestamp ?? '').localeCompare(b.timestamp ?? ''))
 }
 
 export function bringFutureItem(

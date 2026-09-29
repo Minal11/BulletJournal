@@ -4,6 +4,9 @@ import type {
   DayPage,
   FutureLogItem,
   Goal,
+  Habit,
+  HabitLog,
+  MonthlyHabitSelection,
   IndexOverride,
   JournalEntry,
   JournalSnapshot,
@@ -21,6 +24,9 @@ export type EntityKind =
   | 'reflection'
   | 'collection'
   | 'future'
+  | 'habit'
+  | 'habitLog'
+  | 'habitMonth'
   | 'index'
   | 'settings'
 
@@ -61,7 +67,7 @@ export function databaseName(userId: string | null): string {
 }
 
 export function canDuplicate(kind: EntityKind): boolean {
-  return kind === 'entry' || kind === 'goal' || kind === 'collection' || kind === 'future' || kind === 'review' || kind === 'reflection'
+  return kind === 'entry' || kind === 'goal' || kind === 'collection' || kind === 'future' || kind === 'review' || kind === 'reflection' || kind === 'habit' || kind === 'habitLog' || kind === 'habitMonth'
 }
 
 export function journalSummary(snapshot: JournalSnapshot) {
@@ -223,6 +229,9 @@ function indexSnapshot(snapshot: JournalSnapshot): Map<string, { kind: EntityKin
   for (const reflection of snapshot.reflections) add('reflection', reflection.id, reflection)
   for (const collection of snapshot.collections) add('collection', collection.id, collection)
   for (const item of snapshot.futureItems) add('future', item.id, item)
+  for (const habit of snapshot.habits ?? []) add('habit', habit.id, habit)
+  for (const log of snapshot.habitLogs ?? []) add('habitLog', log.id, log)
+  for (const month of snapshot.habitMonths ?? []) add('habitMonth', month.id, month)
   for (const row of snapshot.indexOverrides) add('index', row.id, row)
   add('settings', 'app', snapshot.settings)
   return rows
@@ -246,6 +255,12 @@ export function upsertEntity(snapshot: JournalSnapshot, kind: EntityKind, _id: s
       return { ...snapshot, collections: upsertById(snapshot.collections, payload as Collection) }
     case 'future':
       return { ...snapshot, futureItems: upsertById(snapshot.futureItems, payload as FutureLogItem) }
+    case 'habit':
+      return { ...snapshot, habits: upsertById(snapshot.habits ?? [], payload as Habit) }
+    case 'habitLog':
+      return { ...snapshot, habitLogs: upsertById(snapshot.habitLogs ?? [], payload as HabitLog) }
+    case 'habitMonth':
+      return { ...snapshot, habitMonths: upsertById(snapshot.habitMonths ?? [], payload as MonthlyHabitSelection) }
     case 'index':
       return { ...snapshot, indexOverrides: upsertById(snapshot.indexOverrides, payload as IndexOverride) }
     case 'settings':
@@ -273,6 +288,12 @@ export function removeEntity(snapshot: JournalSnapshot, kind: EntityKind, id: st
       return { ...snapshot, collections: snapshot.collections.filter((item) => item.id !== id) }
     case 'future':
       return { ...snapshot, futureItems: snapshot.futureItems.filter((item) => item.id !== id) }
+    case 'habit':
+      return { ...snapshot, habits: (snapshot.habits ?? []).filter((item) => item.id !== id) }
+    case 'habitLog':
+      return { ...snapshot, habitLogs: (snapshot.habitLogs ?? []).filter((item) => item.id !== id) }
+    case 'habitMonth':
+      return { ...snapshot, habitMonths: (snapshot.habitMonths ?? []).filter((item) => item.id !== id) }
     case 'index':
       return { ...snapshot, indexOverrides: snapshot.indexOverrides.filter((item) => item.id !== id) }
     default:

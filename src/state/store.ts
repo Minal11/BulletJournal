@@ -5,7 +5,9 @@ import { makeEntry, syncLinks, withEntryContent } from '../domain/entries.ts'
 import { blankGoal, blankReflection, blankReview, nextGoalStatus, syncReflection, syncReview } from '../domain/goals.ts'
 import { monthLogId, reflectionId, reviewId, createId } from '../domain/ids.ts'
 import { applyMigrationAction, applyTaskStatus, bringFutureItem, undoMigration } from '../domain/migration.ts'
-import { emptySnapshot, mergeSnapshots } from '../domain/schema.ts'
+import { setMonthHabit, toggleHabitLog } from '../domain/habits.ts'
+import { adoptNextActions, emptySnapshot, mergeSnapshots } from '../domain/schema.ts'
+import { scheduleTask, unscheduleTask } from '../domain/tasks.ts'
 import type {
   AppSettings,
   BulletType,
@@ -14,6 +16,7 @@ import type {
   DayPage,
   FutureLogItem,
   Goal,
+  Habit,
   IndexOverride,
   JournalEntry,
   JournalSnapshot,
@@ -168,7 +171,7 @@ export const journal = {
     await activateDatabase('MyBulletJournal-demo-tour')
     journalBridge.getSnapshot = () => state.snapshot
     journalBridge.replaceQuiet = () => undefined
-    const snapshot = buildTourJournal(new Date())
+    const snapshot = adoptNextActions(buildTourJournal(new Date()), new Date())
     await saveJournal(snapshot)
     if (token !== sessionToken) return
     savedSnapshot = snapshot
@@ -186,7 +189,7 @@ export const journal = {
     emit()
   },
   loadSample() {
-    commit(buildSeed(new Date()))
+    commit(adoptNextActions(buildSeed(new Date()), new Date()))
   },
   async backupNow() {
     await saveBackup(snap())
@@ -467,7 +470,7 @@ export const journal = {
   },
   insertGoal(goal: Goal) {
     const current = snap()
-    commit({ ...current, goals: [...current.goals.filter((item) => item.id !== goal.id), goal] })
+    commit(adoptNextActions({ ...current, goals: [...current.goals.filter((item) => item.id !== goal.id), goal] }, new Date()))
   },
   updateGoal(id: string, patch: Partial<Goal>) {
     const current = snap()
@@ -519,7 +522,7 @@ export const journal = {
     const existing = current.reflections.find((reflection) => reflection.id === id)
     const reflection = syncReflection(existing ?? blankReflection(year, month, current.goals), current.goals)
     const starred = current.entries
-      .filter((entry) => entry.signifiers.includes('important') && entry.date.startsWith(`${year}-${String(month).padStart(2, '0')}`))
+      .filter((entry) => entry.signifiers.includes('important') && entry.date?.startsWith(`${year}-${String(month).padStart(2, '0')}`))
       .map((entry) => entry.id)
     const released = new Set(reflection.releasedMemoryIds)
     const memoryEntryIds = [...new Set([...reflection.memoryEntryIds, ...starred.filter((entryId) => !released.has(entryId))])]
@@ -551,6 +554,7 @@ export const journal = {
       action,
       target ? { targetYear: target.year, targetMonth: target.month } : undefined,
     )
+    if (!entry.date) return
     const { year, month } = monthOf(entry.date)
     const reflectionKey = reflectionId(year, month)
     const reflections = current.reflections.map((reflection) => {
@@ -685,6 +689,81 @@ export const journal = {
     journal.updateCollection(collectionId, {
       bullets: collection.bullets.map((bullet) => ({ ...bullet, sortOrder: order.get(bullet.id) ?? bullet.sortOrder })),
     })
+  },
+  addMasterTask(input: { content: string; goalIds?: string[]; tags?: string[] }): JournalEntry | null {
+    const parsed = parseRapidLog(input.content, 'task')
+    if (!parsed.content) return null
+    const current = snap()
+    const entry = makeEntry({
+      date: null,
+      content: parsed.content,
+      type: 'task',
+      timestamp: null,
+      showTimestamp: false,
+      tags: [...new Set([...(input.tags ?? [])])],
+      goalIds: input.goalIds,
+      taskStatus: 'open',
+      sortOrder: current.entries.length,
+    })
+    commit({ ...current, entries: [...current.entries, entry] })
+    return entry
+  },
+  scheduleEntry(id: string, date: string) {
+    const current = snap()
+    commit({
+      ...current,
+      entries: current.entries.map((entry) => (entry.id === id ? scheduleTask(entry, date) : entry)),
+    })
+  },
+  unscheduleEntry(id: string) {
+    const current = snap()
+    commit({
+      ...current,
+      entries: current.entries.map((entry) => (entry.id === id ? unscheduleTask(entry) : entry)),
+    })
+  },
+  completeTask(id: string) {
+    const current = snap()
+    const entry = current.entries.find((item) => item.id === id)
+    if (!entry || entry.type !== 'task') return
+    const dated = entry.date ? current.entries : current.entries.map((item) => (item.id === id ? scheduleTask(item, todayISO()) : item))
+    const result = applyTaskStatus(dated, current.futureItems, id, 'complete')
+    commit({ ...current, ...result })
+  },
+  addHabit(input: { name: string; description?: string; activeFrom: string; defaultForFutureMonths?: boolean }): Habit | null {
+    const name = input.name.trim()
+    if (!name) return null
+    const current = snap()
+    const now = new Date().toISOString()
+    const habit: Habit = {
+      id: createId(),
+      name,
+      description: input.description?.trim() ?? '',
+      activeFrom: input.activeFrom,
+      inactiveFrom: null,
+      archived: false,
+      defaultForFutureMonths: Boolean(input.defaultForFutureMonths),
+      sortOrder: current.habits.length,
+      createdAt: now,
+      updatedAt: now,
+    }
+    commit({ ...current, habits: [...current.habits, habit] })
+    return habit
+  },
+  updateHabit(id: string, patch: Partial<Pick<Habit, 'name' | 'description' | 'activeFrom' | 'inactiveFrom' | 'archived' | 'defaultForFutureMonths'>>) {
+    const current = snap()
+    commit({
+      ...current,
+      habits: current.habits.map((habit) => (habit.id === id ? { ...habit, ...patch, updatedAt: new Date().toISOString() } : habit)),
+    })
+  },
+  toggleHabit(habitId: string, date: string) {
+    const current = snap()
+    commit({ ...current, habitLogs: toggleHabitLog(current.habitLogs, habitId, date) })
+  },
+  setHabitMonth(habitId: string, year: number, month: number, enabled: boolean) {
+    const current = snap()
+    commit({ ...current, habitMonths: setMonthHabit(current.habitMonths, habitId, year, month, enabled) })
   },
   setIndexOverrides(overrides: IndexOverride[]) {
     commit({ ...snap(), indexOverrides: overrides })

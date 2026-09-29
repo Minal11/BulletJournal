@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { monthName, shiftMonth, todayISO, monthOf } from '../domain/dates.ts'
-import type { BulletType } from '../domain/types.ts'
+import { futureDraftAfterRefresh } from '../lib/future-draft.ts'
+import type { BulletType, FutureLogItem } from '../domain/types.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
 import { InkMark } from '../components/marks.tsx'
@@ -49,24 +50,7 @@ export function FutureLogPage() {
               {waiting.length === 0 && items.length === 0 && <EmptyNote>Leave a note for this month when you think of it.</EmptyNote>}
               <ul className="future-list">
                 {items.map((item) => (
-                  <li key={item.id} className={item.reviewed ? 'is-reviewed' : undefined}>
-                    <InkMark name={item.type === 'event' ? 'event' : item.type === 'note' ? 'note' : 'task'} />
-                    <input
-                      className="ink-input"
-                      aria-label="Future log line"
-                      value={item.content}
-                      onChange={(event) => journal.updateFutureItem(item.id, { content: event.target.value })}
-                    />
-                    {!item.reviewed && (current || started) && (
-                      <button type="button" className="quiet-btn" onClick={() => journal.bringFuture(item.id)}>
-                        Bring into this month
-                      </button>
-                    )}
-                    {item.reviewed && <span className="whisper">Brought in</span>}
-                    <button type="button" className="quiet-btn" aria-label="Remove from the future log" onClick={() => journal.removeFutureItem(item.id)}>
-                      ×
-                    </button>
-                  </li>
+                  <FutureLine key={item.id} item={item} canBring={!item.reviewed && (current || started)} />
                 ))}
               </ul>
               <FutureAdd year={itemYear ?? year} month={itemMonth ?? month} />
@@ -75,6 +59,46 @@ export function FutureLogPage() {
         })}
       </div>
     </article>
+  )
+}
+
+function FutureLine({ item, canBring }: { item: FutureLogItem; canBring: boolean }) {
+  const [draft, setDraft] = useState({ id: item.id, content: item.content, dirty: false })
+  const refreshed = futureDraftAfterRefresh(draft, { id: item.id, content: item.content })
+  if (refreshed.id !== draft.id || refreshed.content !== draft.content || refreshed.dirty !== draft.dirty) {
+    setDraft(refreshed)
+  }
+  return (
+    <li className={item.reviewed ? 'is-reviewed' : undefined}>
+      <InkMark name={item.type === 'event' ? 'event' : item.type === 'note' ? 'note' : 'task'} />
+      <input
+        className="ink-input"
+        aria-label="Future log line"
+        value={draft.content}
+        onChange={(event) => setDraft({ id: item.id, content: event.target.value, dirty: true })}
+      />
+      {draft.dirty && (
+        <button
+          type="button"
+          className="quiet-btn"
+          onClick={() => {
+            journal.updateFutureItem(item.id, { content: draft.content })
+            setDraft({ id: item.id, content: draft.content, dirty: false })
+          }}
+        >
+          Save
+        </button>
+      )}
+      {canBring && (
+        <button type="button" className="quiet-btn" onClick={() => journal.bringFuture(item.id)}>
+          Bring into this month
+        </button>
+      )}
+      {item.reviewed && <span className="whisper">Brought in</span>}
+      <button type="button" className="quiet-btn" aria-label="Remove from the future log" onClick={() => journal.removeFutureItem(item.id)}>
+        ×
+      </button>
+    </li>
   )
 }
 

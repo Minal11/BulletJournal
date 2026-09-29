@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { monthOf, quarterLabel, quarterOf, quarterSpan, todayISO } from '../domain/dates.ts'
+import { goalProgress } from '../domain/goal-progress.ts'
 import { blankGoal, goalsForQuarter, GOAL_STATUS_LABEL, goalSymbol, nextGoalStatus } from '../domain/goals.ts'
+import { defaultGoalOpen, goalHeaderShouldToggle } from '../lib/goal-ui.ts'
 import type { Goal, Quarter } from '../domain/types.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
@@ -56,7 +58,7 @@ export function GoalsPage() {
         <SortableList ids={goals.map((goal) => goal.id)} label="Goals" onReorder={(ids) => journal.reorderGoals(ids)}>
           {goals.map((goal, index) => (
             <SortableRow key={goal.id} id={goal.id}>
-              <GoalArticle goal={goal} index={index + 1} entries={snapshot.entries} logs={snapshot.monthlyLogs} onRemove={() => setRemoving(goal.id)} />
+              <GoalArticle goal={goal} index={index + 1} goalCount={goals.length} entries={snapshot.entries} logs={snapshot.monthlyLogs} onRemove={() => setRemoving(goal.id)} />
             </SortableRow>
           ))}
         </SortableList>
@@ -64,6 +66,7 @@ export function GoalsPage() {
           <GoalArticle
             goal={creating}
             index={goals.length + 1}
+            goalCount={goals.length}
             entries={snapshot.entries}
             logs={snapshot.monthlyLogs}
             persist={false}
@@ -122,6 +125,7 @@ export function GoalsPage() {
 function GoalArticle({
   goal,
   index,
+  goalCount,
   entries,
   logs,
   onRemove,
@@ -131,6 +135,7 @@ function GoalArticle({
 }: {
   goal: Goal
   index: number
+  goalCount: number
   entries: ReturnType<typeof useJournal>['snapshot']['entries']
   logs: ReturnType<typeof useJournal>['snapshot']['monthlyLogs']
   onRemove: () => void
@@ -139,6 +144,8 @@ function GoalArticle({
   onSave?: (draft: Goal) => void
 }) {
   const [draft, setDraft] = useState(goal)
+  const [open, setOpen] = useState(() => (persist ? storedGoalOpen(goal.id, goalCount) : true))
+  const [taskText, setTaskText] = useState('')
   const [boundId, setBoundId] = useState(goal.id)
   if (goal.id !== boundId) {
     setBoundId(goal.id)
@@ -169,9 +176,27 @@ function GoalArticle({
   const today = todayISO()
   const actions = draft.nextActions.length ? draft.nextActions : ['']
 
+  const progress = goalProgress(entries, goal.id)
+  const linked = entries.filter((entry) => entry.type === 'task' && entry.goalIds.includes(goal.id) && (entry.taskStatus === 'open' || entry.taskStatus === 'complete'))
+  function toggle() {
+    setOpen((current) => {
+      const next = !current
+      rememberGoalOpen(goal.id, next)
+      return next
+    })
+  }
+
   return (
-    <article className="goal">
-      <header className="goal-head">
+    <article className={open ? 'goal is-open' : 'goal'}>
+      <header
+        className="goal-head"
+        onClick={(event) => {
+          if (goalHeaderShouldToggle((event.target as HTMLElement).tagName)) toggle()
+        }}
+      >
+        <button type="button" className="goal-chevron" aria-expanded={open} aria-label={open ? 'Collapse goal' : 'Expand goal'} onClick={toggle}>
+          {open ? '▾' : '▸'}
+        </button>
         <p className="kicker">{index}.</p>
         <input
           className="goal-title"
@@ -188,7 +213,13 @@ function GoalArticle({
         >
           <span aria-hidden="true">{goalSymbol(draft.status)}</span> {GOAL_STATUS_LABEL[draft.status]}
         </button>
+        <p className="whisper goal-meta">
+          {draft.category || 'Goal'} · Q{draft.quarter}
+        </p>
+        <GoalMeter progress={progress} />
       </header>
+      <div className="goal-fold" inert={!open ? true : undefined}>
+      <div>
       <label className="field">
         <span>Category</span>
         <input className="ink-input" aria-label="Category" value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))} />
@@ -215,6 +246,30 @@ function GoalArticle({
       <InkField live label="Goal" value={draft.goalText} onChange={(goalText) => setDraft((current) => ({ ...current, goalText }))} rows={2} />
       <InkField live label="Why" value={draft.why} onChange={(why) => setDraft((current) => ({ ...current, why }))} rows={2} />
       <LineList label="Measures / signs of progress" items={draft.measures} onChange={(measures) => setDraft((current) => ({ ...current, measures }))} />
+      {persist ? (
+        <div className="line-list">
+          <h3>Tasks</h3>
+          {linked.length === 0 && <p className="whisper">No tasks yet</p>}
+          <ul className="plain-list">
+            {linked.map((entry) => (
+              <li key={entry.id}>
+                {entry.taskStatus === 'complete' ? 'X' : '•'} {entry.content}
+                {!entry.date && <span className="whisper"> · Master tasks</span>}
+              </li>
+            ))}
+          </ul>
+          <form
+            className="composer compact"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const created = journal.addMasterTask({ content: taskText, goalIds: [goal.id] })
+              if (created) setTaskText('')
+            }}
+          >
+            <input className="composer-input" aria-label="Add a task for this goal" placeholder="Add a task" value={taskText} onChange={(event) => setTaskText(event.target.value)} />
+          </form>
+        </div>
+      ) : (
       <div className="line-list">
         <h3>Next actions</h3>
         {actions.map((action, actionIndex) => (
@@ -254,6 +309,7 @@ function GoalArticle({
           Another action
         </button>
       </div>
+      )}
       <InkField live label="Notes" value={draft.notes} onChange={(notes) => setDraft((current) => ({ ...current, notes }))} rows={2} placeholder="Optional" />
       {!persist && (
         <p className="page-links">
@@ -293,12 +349,46 @@ function GoalArticle({
           <ul className="plain-list">
             {related.map((entry) => (
               <li key={entry.id}>
-                <Link to={entry.date === today ? '/' : `/day/${entry.date}`}>{entry.content}</Link>
+                <Link to={!entry.date ? '/tasks' : entry.date === today ? '/' : `/day/${entry.date}`}>{entry.content}</Link>
               </li>
             ))}
           </ul>
         </div>
       )}
+      </div>
+      </div>
     </article>
   )
+}
+
+function GoalMeter({ progress }: { progress: ReturnType<typeof goalProgress> }) {
+  if (progress.percent === null) return <p className="goal-meter whisper">No tasks yet</p>
+  return (
+    <p className="goal-meter">
+      <span className="goal-bar" style={{ ['--goal-progress' as string]: `${progress.percent}%` }} aria-hidden="true" />
+      <span>{progress.percent}%</span>
+    </p>
+  )
+}
+
+function storedGoalOpen(id: string, goalCount: number): boolean {
+  try {
+    const raw = localStorage.getItem('bj-open-goals')
+    const map = raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+    if (id in map) return Boolean(map[id])
+  } catch {
+    /* keep the default */
+  }
+  return defaultGoalOpen(goalCount)
+}
+
+function rememberGoalOpen(id: string, open: boolean) {
+  try {
+    const raw = localStorage.getItem('bj-open-goals')
+    const map = raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+    map[id] = open
+    localStorage.setItem('bj-open-goals', JSON.stringify(map))
+  } catch {
+    /* the page still toggles for this visit */
+  }
 }

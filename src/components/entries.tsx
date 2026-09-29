@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { bulletLabel, markForEntry, SIGNIFIER_LABEL, TASK_STATUS_LABEL } from '../domain/bullets.ts'
-import { currentTime, formatComposerTime, normalizeTime, upcomingMonths } from '../domain/dates.ts'
+import { currentTime, formatComposerTime, normalizeTime, todayISO, upcomingMonths } from '../domain/dates.ts'
 import { entryCaptions } from '../domain/migration.ts'
 import type { JournalEntry, PlanItem, Signifier, TaskStatus } from '../domain/types.ts'
 import { ENTRY_KIND_LABEL, ENTRY_KINDS, entryKindOf, parseEntryInput, storedEntry, textAfterSave, type EntryKind } from '../lib/entry-input.ts'
@@ -237,7 +237,8 @@ function EntryMenu({ entry, anchor, onClose }: { entry: JournalEntry; anchor: HT
   const closeRef = useRef(onClose)
   closeRef.current = onClose
   const [box, setBox] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
-  const { year, month } = { year: Number(entry.date.slice(0, 4)), month: Number(entry.date.slice(5, 7)) }
+  const dated = entry.date ?? todayISO()
+  const { year, month } = { year: Number(dated.slice(0, 4)), month: Number(dated.slice(5, 7)) }
   const months = upcomingMonths(year, month, 8)
 
   useLayoutEffect(() => {
@@ -324,6 +325,28 @@ function EntryMenu({ entry, anchor, onClose }: { entry: JournalEntry; anchor: HT
               {TASK_STATUS_LABEL[status]}
             </button>
           ))}
+          {entry.taskStatus === 'open' && (
+            <>
+              <p>Move to a day</p>
+              <label className="menu-date">
+                <input
+                  type="date"
+                  aria-label="Move this task to a day"
+                  defaultValue={entry.date ?? ''}
+                  onChange={(event) => {
+                    if (!event.target.value) return
+                    journal.scheduleEntry(entry.id, event.target.value)
+                    onClose()
+                  }}
+                />
+              </label>
+              {entry.date && (
+                <button type="button" role="menuitem" onClick={() => { journal.unscheduleEntry(entry.id); onClose() }}>
+                  Move back to Master Tasks
+                </button>
+              )}
+            </>
+          )}
           <p>Schedule into</p>
           {months.map((item) => (
             <button key={`${item.year}-${item.month}`} type="button" role="menuitem" onClick={() => chooseStatus('scheduled', item)}>

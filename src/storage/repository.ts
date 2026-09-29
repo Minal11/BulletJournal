@@ -21,7 +21,7 @@ export async function readNamedJournal(name: string): Promise<JournalSnapshot | 
 async function readFrom(db: ReturnType<typeof currentDatabase>): Promise<JournalSnapshot | null> {
   const meta = await db.meta.get('main')
   if (!meta) return null
-  const [entries, days, monthlyLogs, goals, reviews, reflections, collections, futureItems, indexOverrides, settingsRow] =
+  const [entries, days, monthlyLogs, goals, reviews, reflections, collections, futureItems, habits, habitLogs, habitMonths, indexOverrides, settingsRow] =
     await Promise.all([
       db.entries.toArray(),
       db.days.toArray(),
@@ -31,6 +31,9 @@ async function readFrom(db: ReturnType<typeof currentDatabase>): Promise<Journal
       db.reflections.toArray(),
       db.collections.toArray(),
       db.futureItems.toArray(),
+      db.habits.toArray(),
+      db.habitLogs.toArray(),
+      db.habitMonths.toArray(),
       db.indexOverrides.toArray(),
       db.settings.get('app'),
     ])
@@ -46,6 +49,9 @@ async function readFrom(db: ReturnType<typeof currentDatabase>): Promise<Journal
     reflections,
     collections,
     futureItems,
+    habits,
+    habitLogs,
+    habitMonths,
     indexOverrides,
     settings: settingsRow?.settings,
   })
@@ -57,7 +63,7 @@ export async function saveJournal(snapshot: JournalSnapshot): Promise<void> {
   const db = database()
   await db.transaction(
     'rw',
-    [db.entries, db.days, db.monthlyLogs, db.goals, db.reviews, db.reflections, db.collections, db.futureItems, db.indexOverrides, db.settings, db.meta],
+    [db.entries, db.days, db.monthlyLogs, db.goals, db.reviews, db.reflections, db.collections, db.futureItems, db.habits, db.habitLogs, db.habitMonths, db.indexOverrides, db.settings, db.meta],
     async () => {
       await Promise.all([
         db.entries.clear(),
@@ -68,6 +74,9 @@ export async function saveJournal(snapshot: JournalSnapshot): Promise<void> {
         db.reflections.clear(),
         db.collections.clear(),
         db.futureItems.clear(),
+        db.habits.clear(),
+        db.habitLogs.clear(),
+        db.habitMonths.clear(),
         db.indexOverrides.clear(),
         db.settings.clear(),
       ])
@@ -79,6 +88,9 @@ export async function saveJournal(snapshot: JournalSnapshot): Promise<void> {
       if (snapshot.reflections.length) await db.reflections.bulkAdd(snapshot.reflections)
       if (snapshot.collections.length) await db.collections.bulkAdd(snapshot.collections)
       if (snapshot.futureItems.length) await db.futureItems.bulkAdd(snapshot.futureItems)
+      if (snapshot.habits.length) await db.habits.bulkAdd(snapshot.habits)
+      if (snapshot.habitLogs.length) await db.habitLogs.bulkAdd(snapshot.habitLogs)
+      if (snapshot.habitMonths.length) await db.habitMonths.bulkAdd(snapshot.habitMonths)
       if (snapshot.indexOverrides.length) await db.indexOverrides.bulkAdd(snapshot.indexOverrides)
       await db.settings.put({ id: 'app', settings: snapshot.settings })
       await db.meta.put({ id: 'main', schemaVersion: SCHEMA_VERSION, seeded: true })
