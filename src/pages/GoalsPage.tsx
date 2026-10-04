@@ -188,6 +188,9 @@ function GoalArticle({
     const created = journal.addGoalTask(goal.id, typed)
     if (!created) {
       setTaskSaving(false)
+      const kept = textAfterTaskSave(false, typed)
+      setTaskText(kept.text)
+      setTaskError(kept.message)
       return
     }
     await journal.flush()

@@ -164,6 +164,16 @@ export function applyRemoteRecord(snapshot: JournalSnapshot, remote: RemoteRecor
   return upsertEntity(snapshot, remote.kind, remote.id, remote.payload)
 }
 
+/**
+ * Apply cloud rows onto the journal as it exists now.
+ * A pull must not start from a copy taken before the network request:
+ * a Goal task saved while that request is in flight would be missing from the copy
+ * and the following replace would delete it locally.
+ */
+export function snapshotAfterRemoteApply(latest: JournalSnapshot, remotes: RemoteRecord[]): JournalSnapshot {
+  return remotes.reduce((current, remote) => applyRemoteRecord(current, remote), latest)
+}
+
 export function markSynced(op: SyncOp, syncedAt: string): SyncOp {
   return {
     ...op,

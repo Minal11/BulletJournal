@@ -7,7 +7,8 @@ import { draftAfterRefresh, persistGoalPatch } from '../lib/draft.ts'
 import { textAfterTaskSave } from '../lib/entry-input.ts'
 import { goalTaskComposerAction, goalTasksSurviveFold } from '../lib/goal-ui.ts'
 import { composerKeyAction } from '../lib/keyboard.ts'
-import { diffSnapshots, shouldAttemptSync } from '../services/sync-diff.ts'
+import { makeEntry } from '../domain/entries.ts'
+import { diffSnapshots, shouldAttemptSync, snapshotAfterRemoteApply } from '../services/sync-diff.ts'
 import { journal } from '../state/store.ts'
 import { activateDatabase, deleteDatabase } from './db.ts'
 import { loadJournal } from './repository.ts'
@@ -142,6 +143,45 @@ describe('goal task saves', () => {
     expect(goalProgress(journal.getSnapshot().snapshot.entries, goal.id).total).toBe(1)
     const movedAgain = scheduleTask(scheduled!, '2026-10-06')
     expect(movedAgain.id).toBe(created?.id)
+  })
+
+  it('keeps a Goal task saved during a cloud pull, and still applies other remote rows', async () => {
+    await useFreshDatabase()
+    const goal = await careerGoal()
+    const created = journal.addGoalTask(goal.id, 'Practice system design')
+    await journal.flush()
+    const latest = journal.getSnapshot().snapshot
+    const remoteGoal = {
+      kind: 'goal' as const,
+      id: goal.id,
+      updatedAt: '2026-10-04T18:30:00.000Z',
+      deletedAt: null,
+      payload: { ...goal, title: 'Career Growth', nextActions: ['Update resume'] },
+    }
+    const unrelated = makeEntry({ date: '2026-10-01', content: 'Morning note', type: 'note' })
+    const duringPull = { ...latest, entries: [...latest.entries, unrelated] }
+    const pulled = snapshotAfterRemoteApply(duringPull, [
+      remoteGoal,
+      {
+        kind: 'entry',
+        id: unrelated.id,
+        updatedAt: '2026-10-04T18:30:00.000Z',
+        deletedAt: '2026-10-04T18:30:00.000Z',
+        payload: unrelated,
+      },
+    ])
+    const saved = pulled.entries.find((entry) => entry.id === created?.id)
+    expect(saved?.content).toBe('Practice system design')
+    expect(saved?.goalIds).toEqual([goal.id])
+    expect(saved?.date).toBeNull()
+    expect(pulled.entries.find((entry) => entry.id === unrelated.id)).toBeUndefined()
+    expect(pulled.goals.find((item) => item.id === goal.id)?.title).toBe('Career Growth')
+    expect(goalProgress(pulled.entries, goal.id)).toEqual({ completed: 0, total: 1, percent: 0 })
+
+    journal.updateGoal(goal.id, persistGoalPatch({ ...goal, title: 'Career Growth', nextActions: ['Practice system design'] }))
+    await journal.flush()
+    const reloaded = await loadJournal()
+    expect(reloaded?.entries.filter((entry) => entry.goalIds.includes(goal.id)).map((entry) => entry.id)).toEqual([created?.id])
   })
 
   it('does not let a store refresh replace a dirty Goal draft or drop newly saved tasks', async () => {

@@ -14,7 +14,9 @@ import {
   isEmptyJournal,
   markConflict,
   markSynced,
+  snapshotAfterRemoteApply,
   type EntityKind,
+  type RemoteRecord,
   type SyncOp,
   type SyncStatus,
 } from './sync-diff.ts'
@@ -235,7 +237,7 @@ async function safeOps(): Promise<SyncOp[]> {
 async function pull(currentUserId: string) {
   const cursor = await loadSyncCursor()
   const since = cursor.lastPullAt
-  let snapshot = journalBridge.getSnapshot()
+  const accepted: RemoteRecord[] = []
   let ops = await loadSyncOps()
   const kinds = Object.keys(CLOUD_TABLE) as EntityKind[]
   for (const kind of kinds) {
@@ -248,7 +250,7 @@ async function pull(currentUserId: string) {
       const op = ops.find((item) => item.key === `${kind}:${remote.id}`)
       const decision = decideRemote(op, remote)
       if (decision === 'apply') {
-        snapshot = applyRemoteRecord(snapshot, remote)
+        accepted.push(remote)
         const synced = acceptRemote(
           op ?? {
             key: `${kind}:${remote.id}`,
@@ -276,7 +278,7 @@ async function pull(currentUserId: string) {
       }
     }
   }
-  journalBridge.replaceQuiet(snapshot)
+  journalBridge.replaceQuiet(snapshotAfterRemoteApply(journalBridge.getSnapshot(), accepted))
   await saveSyncOps(ops)
 }
 
