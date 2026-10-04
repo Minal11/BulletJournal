@@ -7,14 +7,24 @@ export interface GoalProgress {
   percent: number | null
 }
 
+/** Canonical tasks for a Goal. Cancelled lines and migrated copies stay out of the list. */
+export function tasksForGoal(entries: JournalEntry[], goalId: string): JournalEntry[] {
+  return entries
+    .filter(
+      (entry) =>
+        entry.type === 'task' &&
+        entry.goalIds.includes(goalId) &&
+        entry.taskStatus !== 'cancelled' &&
+        !entry.migratedToId,
+    )
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.localeCompare(b.createdAt))
+}
+
 /** Each linked task counts once. Notes, events, cancelled lines, and migrated copies do not. */
 export function goalProgress(entries: JournalEntry[], goalId: string): GoalProgress {
-  const eligible = entries.filter(
-    (entry) =>
-      entry.type === 'task' &&
-      entry.goalIds.includes(goalId) &&
-      (entry.taskStatus === 'open' || entry.taskStatus === 'complete') &&
-      !entry.migratedToId,
+  const eligible = tasksForGoal(entries, goalId).filter(
+    (entry) => entry.taskStatus === 'open' || entry.taskStatus === 'complete',
   )
   const total = eligible.length
   const completed = eligible.filter((entry) => entry.taskStatus === 'complete').length

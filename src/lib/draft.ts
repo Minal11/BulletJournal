@@ -4,6 +4,11 @@ export function draftAfterRefresh<T>(current: { id: string; draft: T; dirty: boo
   return current
 }
 
+/** Persist Goal editors never write nextActions; those strings are only a create-form convenience. */
+export function persistGoalPatch<T extends { nextActions?: string[] }>(draft: T): T {
+  return { ...draft, nextActions: [] }
+}
+
 export interface GoalDraftFields {
   title: string
   category: string

@@ -474,10 +474,8 @@ export const journal = {
   },
   updateGoal(id: string, patch: Partial<Goal>) {
     const current = snap()
-    commit({
-      ...current,
-      goals: current.goals.map((goal) => (goal.id === id ? { ...goal, ...patch, updatedAt: new Date().toISOString() } : goal)),
-    })
+    const goals = current.goals.map((goal) => (goal.id === id ? { ...goal, ...patch, updatedAt: new Date().toISOString() } : goal))
+    commit(adoptNextActions({ ...current, goals }, new Date()))
   },
   cycleGoal(id: string) {
     const current = snap()
@@ -707,6 +705,11 @@ export const journal = {
     })
     commit({ ...current, entries: [...current.entries, entry] })
     return entry
+  },
+  addGoalTask(goalId: string, content: string): JournalEntry | null {
+    const current = snap()
+    if (!current.goals.some((goal) => goal.id === goalId)) return null
+    return journal.addMasterTask({ content, goalIds: [goalId] })
   },
   scheduleEntry(id: string, date: string) {
     const current = snap()

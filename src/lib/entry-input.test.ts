@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { entryKindOf, parseEntryInput, storedEntry, textAfterSave } from './entry-input.ts'
+import { entryKindOf, parseEntryInput, storedEntry, textAfterSave, textAfterTaskSave } from './entry-input.ts'
 import { COLLECTION_ICON_LABEL, COLLECTION_ICONS, collectionIconChoice } from './collection-icons.ts'
-import { draftAfterRefresh, editGoalDraft, type GoalDraftFields } from './draft.ts'
+import { draftAfterRefresh, editGoalDraft, persistGoalPatch, type GoalDraftFields } from './draft.ts'
 
 describe('entry kinds', () => {
   it('selects a kind from a command and does not treat the command as content', () => {
@@ -30,6 +30,10 @@ describe('entry kinds', () => {
       message: "Couldn't save this entry locally. Your text is still here.",
     })
     expect(textAfterSave(true, 'Dinner').message).toBeNull()
+    expect(textAfterTaskSave(false, 'Practice system design')).toEqual({
+      text: 'Practice system design',
+      message: "Couldn't save this task locally. Your text is still here.",
+    })
   })
 })
 
@@ -84,5 +88,12 @@ describe('goal draft', () => {
     expect(withStatus.measures).toEqual(['8 sessions'])
     expect(withStatus.nextActions).toEqual(['Study Spring Boot'])
     expect(withStatus.title).toBe('Career Growth')
+  })
+
+  it('does not write nextActions from a persist Goal draft after a store refresh', () => {
+    const draft = { ...blank, title: 'Career Growth, revised', nextActions: ['stale string'] }
+    const next = draftAfterRefresh({ id: 'career', draft, dirty: true }, { id: 'career', source: blank })
+    expect(next.draft.title).toBe('Career Growth, revised')
+    expect(persistGoalPatch(next.draft).nextActions).toEqual([])
   })
 })

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { makeEntry } from './entries.ts'
-import { goalProgress } from './goal-progress.ts'
+import { goalProgress, tasksForGoal } from './goal-progress.ts'
 import { habitChecked, monthHabits, setMonthHabit, toggleHabitLog } from './habits.ts'
 import { emptySnapshot, migrateSnapshot } from './schema.ts'
 import { masterTasks, scheduleTask, unscheduleTask } from './tasks.ts'
 import { searchJournal } from './search.ts'
 import { futureDraftAfterRefresh } from '../lib/future-draft.ts'
-import { defaultGoalOpen, goalHeaderShouldToggle } from '../lib/goal-ui.ts'
+import { defaultGoalOpen, goalHeaderShouldToggle, goalTasksSurviveFold } from '../lib/goal-ui.ts'
 import { diffSnapshots } from '../services/sync-diff.ts'
 import type { Habit, JournalEntry } from './types.ts'
 
@@ -59,6 +59,9 @@ describe('collapsible goals', () => {
     expect(goalHeaderShouldToggle('HEADER')).toBe(true)
     expect(goalHeaderShouldToggle('BUTTON')).toBe(false)
     expect(goalHeaderShouldToggle('INPUT')).toBe(false)
+    const tasks = [{ id: '1', content: 'Update resume' }]
+    expect(goalTasksSurviveFold(tasks, false)).toEqual(tasks)
+    expect(goalTasksSurviveFold(tasks, true)).toEqual(tasks)
   })
 })
 
@@ -81,6 +84,18 @@ describe('goal progress', () => {
     expect(again.id).toBe('1')
     expect(goalProgress([again, entries[1]!, entries[2]!, entries[3]!], 'career').total).toBe(4)
     expect(goalProgress([], 'career')).toEqual({ completed: 0, total: 0, percent: null })
+  })
+
+  it('lists Goal tasks from canonical records, not nextActions', () => {
+    const entries = [
+      task({ id: '1', content: 'Update resume', goalIds: ['career'], taskStatus: 'complete', date: null }),
+      task({ id: '2', content: 'Practice Spring', goalIds: ['career'], date: null }),
+      task({ id: '3', content: 'Dropped', goalIds: ['career'], taskStatus: 'cancelled' }),
+    ]
+    expect(tasksForGoal(entries, 'career').map((entry) => entry.content)).toEqual(['Update resume', 'Practice Spring'])
+    expect(goalProgress(entries, 'career')).toEqual({ completed: 1, total: 2, percent: 50 })
+    const added = [...entries, task({ id: '4', content: 'Practice system design', goalIds: ['career'], date: null })]
+    expect(goalProgress(added, 'career')).toEqual({ completed: 1, total: 3, percent: 33 })
   })
 
   it('turns saved next actions into tasks without dropping the words', () => {

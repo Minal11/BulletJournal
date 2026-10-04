@@ -44,3 +44,9 @@ export function textAfterSave(savedLocally: boolean, text: string): { text: stri
   if (!savedLocally) return { text, message: "Couldn't save this entry locally. Your text is still here." }
   return { text: '', message: null }
 }
+
+/** Goal tasks use the same local-first rule with their own wording. */
+export function textAfterTaskSave(savedLocally: boolean, text: string): { text: string; message: string | null } {
+  if (!savedLocally) return { text, message: "Couldn't save this task locally. Your text is still here." }
+  return { text: '', message: null }
+}

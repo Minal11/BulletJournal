@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { monthOf, quarterLabel, quarterOf, quarterSpan, todayISO } from '../domain/dates.ts'
-import { goalProgress } from '../domain/goal-progress.ts'
+import { goalProgress, tasksForGoal } from '../domain/goal-progress.ts'
 import { blankGoal, goalsForQuarter, GOAL_STATUS_LABEL, goalSymbol, nextGoalStatus } from '../domain/goals.ts'
-import { defaultGoalOpen, goalHeaderShouldToggle } from '../lib/goal-ui.ts'
-import type { Goal, Quarter } from '../domain/types.ts'
+import { draftAfterRefresh, persistGoalPatch } from '../lib/draft.ts'
+import { textAfterTaskSave } from '../lib/entry-input.ts'
+import { defaultGoalOpen, goalHeaderShouldToggle, goalTaskComposerAction, goalTasksSurviveFold } from '../lib/goal-ui.ts'
+import { composerKeyAction } from '../lib/keyboard.ts'
+import type { Goal, JournalEntry, Quarter } from '../domain/types.ts'
 import { journal } from '../state/store.ts'
 import { useJournal } from '../state/use-journal.ts'
 import { SortableList, SortableRow } from '../components/sortable.tsx'
@@ -144,40 +147,55 @@ function GoalArticle({
   onSave?: (draft: Goal) => void
 }) {
   const [draft, setDraft] = useState(goal)
+  const [dirty, setDirty] = useState(false)
   const [open, setOpen] = useState(() => (persist ? storedGoalOpen(goal.id, goalCount) : true))
   const [taskText, setTaskText] = useState('')
+  const [taskError, setTaskError] = useState<string | null>(null)
+  const [taskSaving, setTaskSaving] = useState(false)
   const [boundId, setBoundId] = useState(goal.id)
-  if (goal.id !== boundId) {
-    setBoundId(goal.id)
-    setDraft(goal)
+  const refreshed = draftAfterRefresh({ id: boundId, draft, dirty }, { id: goal.id, source: goal })
+  if (refreshed.id !== boundId || refreshed.draft !== draft || refreshed.dirty !== dirty) {
+    setBoundId(refreshed.id)
+    setDraft(refreshed.draft)
+    setDirty(refreshed.dirty)
   }
   useEffect(() => {
-    if (!persist || draft.id !== goal.id) return
-    if (
-      draft.title === goal.title &&
-      draft.category === goal.category &&
-      draft.goalText === goal.goalText &&
-      draft.why === goal.why &&
-      draft.notes === goal.notes &&
-      draft.status === goal.status &&
-      draft.year === goal.year &&
-      draft.quarter === goal.quarter &&
-      draft.startDate === goal.startDate &&
-      draft.measures.join('\n') === goal.measures.join('\n') &&
-      draft.nextActions.join('\n') === goal.nextActions.join('\n')
-    ) {
-      return
-    }
-    const handle = window.setTimeout(() => journal.updateGoal(draft.id, draft), 400)
+    if (!persist || !dirty) return
+    const handle = window.setTimeout(() => {
+      journal.updateGoal(draft.id, persistGoalPatch(draft))
+      setDirty(false)
+    }, 400)
     return () => window.clearTimeout(handle)
-  }, [draft, persist, goal])
+  }, [draft, persist, dirty])
   const related = entries.filter((entry) => entry.goalIds.includes(goal.id)).slice(0, 8)
   const focuses = logs.flatMap((log) => log.goalFocus.filter((focus) => focus.goalId === goal.id).map((focus) => ({ ...focus, year: log.year, month: log.month })))
   const today = todayISO()
   const actions = draft.nextActions.length ? draft.nextActions : ['']
 
   const progress = goalProgress(entries, goal.id)
-  const linked = entries.filter((entry) => entry.type === 'task' && entry.goalIds.includes(goal.id) && (entry.taskStatus === 'open' || entry.taskStatus === 'complete'))
+  const linked = goalTasksSurviveFold(tasksForGoal(entries, goal.id), open)
+
+  function edit<K extends keyof Goal>(key: K, value: Goal[K]) {
+    setDirty(true)
+    setDraft((current) => ({ ...current, [key]: value }))
+  }
+
+  async function saveGoalTask() {
+    const typed = taskText
+    if (!typed.trim() || taskSaving) return
+    setTaskSaving(true)
+    setTaskError(null)
+    const created = journal.addGoalTask(goal.id, typed)
+    if (!created) {
+      setTaskSaving(false)
+      return
+    }
+    await journal.flush()
+    setTaskSaving(false)
+    const kept = textAfterTaskSave(!journal.getSnapshot().error, typed)
+    setTaskText(kept.text)
+    setTaskError(kept.message)
+  }
   function toggle() {
     setOpen((current) => {
       const next = !current
@@ -203,12 +221,15 @@ function GoalArticle({
           aria-label="Goal name"
           value={draft.title}
           placeholder="Name"
-          onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+          onChange={(event) => edit('title', event.target.value)}
         />
         <button
           type="button"
           className="status-btn"
-          onClick={() => setDraft((current) => ({ ...current, status: nextGoalStatus(current.status) }))}
+          onClick={() => {
+            setDirty(true)
+            setDraft((current) => ({ ...current, status: nextGoalStatus(current.status) }))
+          }}
           aria-label={`Status ${GOAL_STATUS_LABEL[draft.status]}. Change status.`}
         >
           <span aria-hidden="true">{goalSymbol(draft.status)}</span> {GOAL_STATUS_LABEL[draft.status]}
@@ -222,16 +243,16 @@ function GoalArticle({
       <div>
       <label className="field">
         <span>Category</span>
-        <input className="ink-input" aria-label="Category" value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value }))} />
+        <input className="ink-input" aria-label="Category" value={draft.category} onChange={(event) => edit('category', event.target.value)} />
       </label>
       <div className="choice-row">
         <label className="whisper">
           Year{' '}
-          <input className="ink-input" aria-label="Year" type="number" value={draft.year} onChange={(event) => setDraft((current) => ({ ...current, year: Number(event.target.value) || current.year }))} />
+          <input className="ink-input" aria-label="Year" type="number" value={draft.year} onChange={(event) => edit('year', Number(event.target.value) || draft.year)} />
         </label>
         <label className="whisper">
           Quarter{' '}
-          <select aria-label="Quarter" value={draft.quarter} onChange={(event) => setDraft((current) => ({ ...current, quarter: Number(event.target.value) as Goal['quarter'] }))}>
+          <select aria-label="Quarter" value={draft.quarter} onChange={(event) => edit('quarter', Number(event.target.value) as Goal['quarter'])}>
             <option value={1}>Q1</option>
             <option value={2}>Q2</option>
             <option value={3}>Q3</option>
@@ -240,34 +261,52 @@ function GoalArticle({
         </label>
         <label className="whisper">
           Start date{' '}
-          <input className="ink-input" aria-label="Start date" type="date" value={draft.startDate ?? ''} onChange={(event) => setDraft((current) => ({ ...current, startDate: event.target.value || null }))} />
+          <input className="ink-input" aria-label="Start date" type="date" value={draft.startDate ?? ''} onChange={(event) => edit('startDate', event.target.value || null)} />
         </label>
       </div>
-      <InkField live label="Goal" value={draft.goalText} onChange={(goalText) => setDraft((current) => ({ ...current, goalText }))} rows={2} />
-      <InkField live label="Why" value={draft.why} onChange={(why) => setDraft((current) => ({ ...current, why }))} rows={2} />
-      <LineList label="Measures / signs of progress" items={draft.measures} onChange={(measures) => setDraft((current) => ({ ...current, measures }))} />
+      <InkField live label="Goal" value={draft.goalText} onChange={(goalText) => edit('goalText', goalText)} rows={2} />
+      <InkField live label="Why" value={draft.why} onChange={(why) => edit('why', why)} rows={2} />
+      <LineList label="Measures / signs of progress" items={draft.measures} onChange={(measures) => edit('measures', measures)} />
       {persist ? (
         <div className="line-list">
           <h3>Tasks</h3>
           {linked.length === 0 && <p className="whisper">No tasks yet</p>}
           <ul className="plain-list">
             {linked.map((entry) => (
-              <li key={entry.id}>
-                {entry.taskStatus === 'complete' ? 'X' : '•'} {entry.content}
-                {!entry.date && <span className="whisper"> · Master tasks</span>}
-              </li>
+              <GoalTaskRow key={entry.id} task={entry} />
             ))}
           </ul>
           <form
             className="composer compact"
             onSubmit={(event) => {
               event.preventDefault()
-              const created = journal.addMasterTask({ content: taskText, goalIds: [goal.id] })
-              if (created) setTaskText('')
+              void saveGoalTask()
             }}
           >
-            <input className="composer-input" aria-label="Add a task for this goal" placeholder="Add a task" value={taskText} onChange={(event) => setTaskText(event.target.value)} />
+            <input
+              className="composer-input"
+              aria-label="Add a task for this goal"
+              placeholder="Add a task..."
+              value={taskText}
+              onChange={(event) => {
+                setTaskText(event.target.value)
+                if (taskError) setTaskError(null)
+              }}
+              onKeyDown={(event) => {
+                const action = goalTaskComposerAction(composerKeyAction(event))
+                if (action === 'cancel') {
+                  event.preventDefault()
+                  setTaskText('')
+                  setTaskError(null)
+                }
+                if (action === 'ignore' && event.key === 'Enter') event.preventDefault()
+              }}
+            />
+            <button type="submit" className="quiet-btn" disabled={taskSaving}>
+              Add
+            </button>
           </form>
+          {taskError && <p className="composer-error">{taskError}</p>}
         </div>
       ) : (
       <div className="line-list">
@@ -310,7 +349,7 @@ function GoalArticle({
         </button>
       </div>
       )}
-      <InkField live label="Notes" value={draft.notes} onChange={(notes) => setDraft((current) => ({ ...current, notes }))} rows={2} placeholder="Optional" />
+      <InkField live label="Notes" value={draft.notes} onChange={(notes) => edit('notes', notes)} rows={2} placeholder="Optional" />
       {!persist && (
         <p className="page-links">
           <button type="button" className="quiet-btn" onClick={() => onSave?.(draft)}>
@@ -358,6 +397,85 @@ function GoalArticle({
       </div>
       </div>
     </article>
+  )
+}
+
+function GoalTaskRow({ task }: { task: JournalEntry }) {
+  const [editing, setEditing] = useState(false)
+  const [content, setContent] = useState(task.content)
+  const [date, setDate] = useState(task.date ?? '')
+  const [editError, setEditError] = useState<string | null>(null)
+  const complete = task.taskStatus === 'complete'
+
+  async function saveEdit() {
+    const next = content.trim()
+    if (!next) return
+    journal.updateEntry(task.id, { content: next })
+    await journal.flush()
+    if (journal.getSnapshot().error) {
+      setEditError("Couldn't save this task locally. Your text is still here.")
+      return
+    }
+    setEditError(null)
+    setEditing(false)
+  }
+
+  return (
+    <li>
+      <p>
+        <span aria-hidden="true">{complete ? 'X' : '•'} </span>
+        {editing ? (
+          <input className="ink-input" aria-label="Task" value={content} onChange={(event) => setContent(event.target.value)} />
+        ) : (
+          task.content
+        )}
+        {!task.date && <span className="whisper"> · Master tasks</span>}
+        {task.date && <span className="whisper"> · {task.date}</span>}
+      </p>
+      <p className="page-links">
+        {editing ? (
+          <button type="button" className="quiet-btn" onClick={() => void saveEdit()}>
+            Save
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="quiet-btn"
+            onClick={() => {
+              setContent(task.content)
+              setEditing(true)
+            }}
+          >
+            Edit
+          </button>
+        )}
+        {complete ? (
+          <button type="button" className="quiet-btn" onClick={() => journal.setEntryStatus(task.id, 'open')}>
+            Reopen
+          </button>
+        ) : (
+          <button type="button" className="quiet-btn" onClick={() => journal.setEntryStatus(task.id, 'complete')}>
+            Complete
+          </button>
+        )}
+        <button type="button" className="quiet-btn" onClick={() => journal.setEntryStatus(task.id, 'cancelled')}>
+          Drop
+        </button>
+        <label className="whisper">
+          Move to day{' '}
+          <input
+            type="date"
+            aria-label={`Move ${task.content} to a day`}
+            value={date}
+            onChange={(event) => {
+              setDate(event.target.value)
+              if (event.target.value) journal.scheduleEntry(task.id, event.target.value)
+            }}
+          />
+        </label>
+      </p>
+      {editError && <p className="composer-error">{editError}</p>}
+    </li>
   )
 }
 
